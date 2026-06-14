@@ -30,7 +30,7 @@ we base directly on the prebuilt cirruslabs Xcode image (user `admin`).
 
 ekiden's `launch.sh` pulls with `tart pull` and **no `--insecure` flag**, and Tart
 treats anything that isn't `--insecure` as HTTPS (localhost is *not* special-cased).
-A plain-HTTP `localhost:5000` registry therefore can't be pulled by the loop as
+A plain-HTTP `localhost:5001` registry therefore can't be pulled by the loop as
 written — and we never edit the submodule.
 
 `launch.sh` only pulls **when the image isn't already cached locally**. So we
@@ -54,6 +54,11 @@ git submodule update --init
 ```
 
 ## From zero to a green CI run
+
+> **Just trying it on one machine?** Skip the registry entirely — see
+> [Local-only flow](#local-only-flow-skip-the-registry) below. The full
+> registry walkthrough only matters when you distribute the image to other
+> hosts.
 
 ### 0. (Optional) Keep Tart state inside this repo
 
@@ -80,9 +85,11 @@ docker compose up -d
 Verify (empty catalog is expected before the first push):
 
 ```sh
-curl http://localhost:5000/v2/_catalog
+curl http://localhost:5001/v2/_catalog
 # {"repositories":[]}
 ```
+
+(Port 5001, not 5000: macOS AirPlay Receiver squats on :5000 and intercepts pushes with HTTP 403.)
 
 ### 2. Tell Tart the local registry is insecure
 
@@ -105,21 +112,21 @@ leaves a local VM named `atlas-app-ci`.
 ### 4. Push it to the local registry
 
 ```sh
-tart push --insecure atlas-app-ci localhost:5000/atlas-app-ci:latest
+tart push --insecure atlas-app-ci localhost:5001/atlas-app-ci:latest
 ```
 
 Verify:
 
 ```sh
-curl http://localhost:5000/v2/_catalog
+curl http://localhost:5001/v2/_catalog
 # {"repositories":["atlas-app-ci"]}
 ```
 
 ### 5. Pre-pull the image (the insecure-pull workaround)
 
 ```sh
-tart pull --insecure localhost:5000/atlas-app-ci:latest
-tart list   # should show localhost:5000/atlas-app-ci:latest
+tart pull --insecure localhost:5001/atlas-app-ci:latest
+tart list   # should show localhost:5001/atlas-app-ci:latest
 ```
 
 The host loop sees it cached and won't try its own (HTTPS) pull. **Re-run this
@@ -148,6 +155,31 @@ bash vendor/ekiden/host/launch.sh
 It will: mint a registration token → clone+boot a VM → register an ephemeral
 runner → wait for a job. Leave it running; it loops one VM per job. `Ctrl-C`
 deletes the current VM and exits.
+
+## Local-only flow (skip the registry)
+
+For a one-machine dev loop, the OCI registry is optional. The host loop checks
+`tart list` for a local VM matching `REGISTRY_PATH` and only pulls when it
+isn't there ([launch.sh:165-179](vendor/ekiden/host/launch.sh#L165-L179)). If
+`REGISTRY_URL` is empty, `REGISTRY_PATH` collapses to bare `REGISTRY_IMAGE_NAME`
+and the loop clones directly from the locally-built Packer VM.
+
+Steps (replaces 1, 4, 5 above):
+
+1. Skip `registry/` entirely — no Docker needed.
+2. `packer init . && packer build .` in `guest/` as usual; this leaves a local
+   VM named `atlas-app-ci`.
+3. In `.env`:
+   ```sh
+   REGISTRY_URL=
+   REGISTRY_IMAGE_NAME=atlas-app-ci   # bare name — Packer doesn't tag :latest
+   ```
+4. Run `bash vendor/ekiden/host/launch.sh` as in step 8. Each iteration clones
+   `atlas-app-ci` into a throwaway VM and boots it.
+
+When you eventually need to share the image with other hosts, switch back to
+the registry flow (set `REGISTRY_URL=localhost:5001` and
+`REGISTRY_IMAGE_NAME=atlas-app-ci:latest`, redo steps 1, 4, 5).
 
 ### 9. Trigger a run
 
@@ -219,10 +251,10 @@ You should get a JSON `token`, not a `message`/404.
 
 **Registry push refused / `http: server gave HTTP response to HTTPS client`** —
 you forgot `--insecure` on `tart push`/`tart pull`. Both must have it for
-`localhost:5000`.
+`localhost:5001`.
 
 **Host loop tries to pull and fails over HTTPS** — the image wasn't pre-cached.
-Re-run step 5; confirm `tart list` shows `localhost:5000/atlas-app-ci:latest`
+Re-run step 5; confirm `tart list` shows `localhost:5001/atlas-app-ci:latest`
 before starting `launch.sh`. (The loop greps `tart list` for the exact path.)
 
 **Runner registers but never picks up the job** — label mismatch. The job's

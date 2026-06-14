@@ -1,21 +1,18 @@
 # Plain OCI registry that replaces ekiden's Gitea setup.
-# HTTP only on localhost:5000 — Tart talks to it with `--insecure` (see top-level README).
+# HTTP only on localhost:5001 — Tart talks to it with `--insecure` (see top-level README).
+# Port 5001 (not 5000) to avoid macOS AirPlay Receiver, which squats on :5000 and returns 403.
 services:
   registry:
     image: registry:2
     container_name: tart-ci-registry
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5001:5000"
     volumes:
-      - registry-data:/var/lib/registry
+      - /Volumes/T9/registry:/var/lib/registry
     healthcheck:
       # registry:2 has no shell/curl; hit /v2/ with its bundled wget.
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/v2/"]
       interval: 10s
       timeout: 3s
       retries: 5
-
-volumes:
-  registry-data:
-    driver: local

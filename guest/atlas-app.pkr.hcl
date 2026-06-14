@@ -5,7 +5,7 @@
 // configured/registered here — ekiden's host loop does that per job (ephemeral).
 //
 // After a successful build, push it to the local registry:
-//   tart push --insecure atlas-app-ci localhost:5000/atlas-app-ci:latest
+//   tart push --insecure atlas-app-ci localhost:5001/atlas-app-ci:latest
 
 packer {
   required_plugins {
@@ -27,7 +27,7 @@ source "tart-cli" "atlas-app" {
   vm_name      = "atlas-app-ci"
   cpu_count    = 4
   memory_gb    = 8
-  disk_size_gb = 100
+  disk_size_gb = 120
   ssh_username = "admin"
   ssh_password = "admin"
   ssh_timeout  = "120s"
