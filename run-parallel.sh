@@ -12,6 +12,10 @@
 # Each VM consumes VM_RAM + VM_CPU from .env. N times those must fit the host.
 
 set -euo pipefail
+# Job control: each backgrounded subshell becomes its own process group
+# (pgid = pid). This lets us signal the whole tree (launch.sh, tart, sshpass,
+# ssh, sed, ...) with `kill -- -PGID`.
+set -m
 
 N="${1:-2}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -28,9 +32,21 @@ BASE_NAME="${BASE_NAME:-runner}"
 rm -rf "$RUNNERS_DIR"
 
 pids=()
+stopped=0
 cleanup() {
+  [ $stopped -eq 1 ] && return
+  stopped=1
   echo "[parallel] stopping"
-  kill "${pids[@]}" 2>/dev/null || true
+  # Signal each child's whole process group (negative pid = pgid).
+  for pid in "${pids[@]}"; do kill -TERM -- "-$pid" 2>/dev/null || true; done
+  # Give VMs ~5s to be deleted by ekiden's own SIGTERM trap, then force.
+  for _ in 1 2 3 4 5; do
+    sleep 1
+    alive=0
+    for pid in "${pids[@]}"; do kill -0 "$pid" 2>/dev/null && alive=1; done
+    [ $alive -eq 0 ] && break
+  done
+  for pid in "${pids[@]}"; do kill -KILL -- "-$pid" 2>/dev/null || true; done
   wait 2>/dev/null || true
   rm -rf "$RUNNERS_DIR"
   echo "[parallel] cleaned $RUNNERS_DIR"
