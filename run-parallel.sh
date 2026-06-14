@@ -5,11 +5,11 @@
 # env-var override from the wrapper).
 #
 # Usage: ./run-parallel.sh [N]   (default 2)
-# Workdirs: .runners/runner-1, .runners/runner-2, ...
-# Logs:     <workdir>/runner.log (ekiden writes this itself)
-# Stop:     pkill -f vendor/ekiden/host/launch.sh
+# Workdirs: .runners/runner-1, .runners/runner-2, ... (wiped on start and exit)
+# Logs:     <workdir>/runner.log (ekiden writes this itself; gone on cleanup)
+# Stop:     Ctrl-C, or pkill -f vendor/ekiden/host/launch.sh
 #
-# Each VM consumes VM_RAM + VM_CPU from .env. N times that must fit the host.
+# Each VM consumes VM_RAM + VM_CPU from .env. N times those must fit the host.
 
 set -euo pipefail
 
@@ -17,14 +17,25 @@ N="${1:-2}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 LAUNCH="$ROOT/vendor/ekiden/host/launch.sh"
 SRC_ENV="$ROOT/.env"
+RUNNERS_DIR="$ROOT/.runners"
 
 [ -f "$SRC_ENV" ] || { echo "missing $SRC_ENV" >&2; exit 1; }
 
 BASE_NAME="$(grep -E '^RUNNER_NAME=' "$SRC_ENV" | head -1 | cut -d= -f2-)"
 BASE_NAME="${BASE_NAME:-runner}"
 
+# Stale workdirs from a previous run (or crash) are misleading; nuke them.
+rm -rf "$RUNNERS_DIR"
+
 pids=()
-trap 'echo "[parallel] stopping"; kill "${pids[@]}" 2>/dev/null || true; wait' INT TERM
+cleanup() {
+  echo "[parallel] stopping"
+  kill "${pids[@]}" 2>/dev/null || true
+  wait 2>/dev/null || true
+  rm -rf "$RUNNERS_DIR"
+  echo "[parallel] cleaned $RUNNERS_DIR"
+}
+trap cleanup INT TERM EXIT
 
 for i in $(seq 1 "$N"); do
   WORKDIR="$ROOT/.runners/runner-$i"
