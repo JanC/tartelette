@@ -30,7 +30,10 @@ list_json=$(curl -fsS -H "Authorization: bearer $GITHUB_API_TOKEN" "$RUNNERS_URL
 filter='.runners[] | select(.name | startswith($p))'
 [ $OFFLINE_ONLY -eq 1 ] && filter="$filter | select(.status==\"offline\")"
 
-mapfile -t targets < <(echo "$list_json" | jq -r --arg p "$RUNNER_NAME" "$filter | \"\\(.id) \\(.name) \\(.status)\"")
+targets=()
+while IFS= read -r line; do
+  targets+=("$line")
+done < <(echo "$list_json" | jq -r --arg p "$RUNNER_NAME" "$filter | \"\\(.id) \\(.name) \\(.status)\"")
 
 if [ ${#targets[@]} -eq 0 ]; then
   echo "no runners matching prefix '$RUNNER_NAME'$([ $OFFLINE_ONLY -eq 1 ] && echo ' (offline)')"
