@@ -5,7 +5,7 @@
 // configured/registered here — ekiden's host loop does that per job (ephemeral).
 //
 // After a successful build, push it to the local registry:
-//   tart push --insecure tuist-app-ci localhost:5000/tuist-app-ci:latest
+//   tart push --insecure atlas-app-ci localhost:5000/atlas-app-ci:latest
 
 packer {
   required_plugins {
@@ -22,9 +22,9 @@ variable "xcode_image_tag" {
   description = "Tag of ghcr.io/cirruslabs/macos-tahoe-xcode to base on. Pinned, not 'latest'."
 }
 
-source "tart-cli" "tuist-app" {
+source "tart-cli" "atlas-app" {
   vm_base_name = "ghcr.io/cirruslabs/macos-tahoe-xcode:${var.xcode_image_tag}"
-  vm_name      = "tuist-app-ci"
+  vm_name      = "atlas-app-ci"
   cpu_count    = 4
   memory_gb    = 8
   disk_size_gb = 100
@@ -34,7 +34,7 @@ source "tart-cli" "tuist-app" {
 }
 
 build {
-  sources = ["source.tart-cli.tuist-app"]
+  sources = ["source.tart-cli.atlas-app"]
 
   // GitHub Actions runner — download only, no config.sh here.
   provisioner "shell" {

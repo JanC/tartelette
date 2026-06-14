@@ -17,7 +17,7 @@ Everything else here is a thin overlay:
 | Path | Purpose |
 |------|---------|
 | `registry/docker-compose.yml` | local `registry:2` — replaces ekiden's `registry/` (Gitea) |
-| `guest/tuist-app.pkr.hcl` | our Packer template — replaces ekiden's `guest/*.pkr.hcl` |
+| `guest/atlas-app.pkr.hcl` | our Packer template — replaces ekiden's `guest/*.pkr.hcl` |
 | `.env.example` | config for ekiden's host loop, using **ekiden's own variable names** |
 
 The **host run-loop is ekiden's** (`vendor/ekiden/host/launch.sh`) — we don't
@@ -100,26 +100,26 @@ packer build .                          # defaults to xcode_image_tag=26.3
 
 This pulls `ghcr.io/cirruslabs/macos-tahoe-xcode:26.3` over HTTPS (no auth needed),
 boots it, downloads the latest GitHub Actions runner into `~/actions-runner`, and
-leaves a local VM named `tuist-app-ci`.
+leaves a local VM named `atlas-app-ci`.
 
 ### 4. Push it to the local registry
 
 ```sh
-tart push --insecure tuist-app-ci localhost:5000/tuist-app-ci:latest
+tart push --insecure atlas-app-ci localhost:5000/atlas-app-ci:latest
 ```
 
 Verify:
 
 ```sh
 curl http://localhost:5000/v2/_catalog
-# {"repositories":["tuist-app-ci"]}
+# {"repositories":["atlas-app-ci"]}
 ```
 
 ### 5. Pre-pull the image (the insecure-pull workaround)
 
 ```sh
-tart pull --insecure localhost:5000/tuist-app-ci:latest
-tart list   # should show localhost:5000/tuist-app-ci:latest
+tart pull --insecure localhost:5000/atlas-app-ci:latest
+tart list   # should show localhost:5000/atlas-app-ci:latest
 ```
 
 The host loop sees it cached and won't try its own (HTTPS) pull. **Re-run this
@@ -201,7 +201,7 @@ jobs:
 
 **VM never gets an IP** — `tart ip <name>` hangs forever. The VM failed to boot or
 networking didn't come up. Run once with graphics to watch:
-`tart run tuist-app-ci`. Confirm the image actually booted during `packer build`.
+`tart run atlas-app-ci`. Confirm the image actually booted during `packer build`.
 
 **SSH never reachable** — loop stuck at "Waiting for SSH". Almost always a
 user/password mismatch: cirruslabs images use `admin/admin`; ensure
@@ -222,7 +222,7 @@ you forgot `--insecure` on `tart push`/`tart pull`. Both must have it for
 `localhost:5000`.
 
 **Host loop tries to pull and fails over HTTPS** — the image wasn't pre-cached.
-Re-run step 5; confirm `tart list` shows `localhost:5000/tuist-app-ci:latest`
+Re-run step 5; confirm `tart list` shows `localhost:5000/atlas-app-ci:latest`
 before starting `launch.sh`. (The loop greps `tart list` for the exact path.)
 
 **Runner registers but never picks up the job** — label mismatch. The job's
