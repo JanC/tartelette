@@ -1,6 +1,7 @@
 .env
 *.log
 runner.log
+.runners/
 
 # Packer
 guest/.packer.d/

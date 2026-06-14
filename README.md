@@ -156,6 +156,21 @@ It will: mint a registration token → clone+boot a VM → register an ephemeral
 runner → wait for a job. Leave it running; it loops one VM per job. `Ctrl-C`
 deletes the current VM and exits.
 
+### Running multiple runners in parallel
+
+`launch.sh` is a single serial loop (one VM at a time). For N concurrent
+runners, run N copies — each needs a unique `RUNNER_NAME`, otherwise
+`config.sh --replace` makes them kick each other off in GitHub. Wrapper:
+
+```sh
+./run-parallel.sh 3        # 3 runners → runner-1.log .. runner-3.log
+pkill -f vendor/ekiden/host/launch.sh   # stop them
+```
+
+Sizing: each VM consumes `VM_RAM` + `VM_CPU` from `.env`. N × those must fit
+the host. Disk is CoW from the base image, so growth is mostly the per-job
+delta. `tart list --running` shows what's live.
+
 ## Local-only flow (skip the registry)
 
 For a one-machine dev loop, the OCI registry is optional. The host loop checks
