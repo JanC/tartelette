@@ -1,0 +1,21 @@
+# Plain OCI registry that replaces ekiden's Gitea setup.
+# HTTP only on localhost:5000 — Tart talks to it with `--insecure` (see top-level README).
+services:
+  registry:
+    image: registry:2
+    container_name: tart-ci-registry
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+    healthcheck:
+      # registry:2 has no shell/curl; hit /v2/ with its bundled wget.
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/v2/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  registry-data:
+    driver: local

@@ -1,0 +1,7 @@
+.env
+*.log
+runner.log
+
+# Packer
+guest/.packer.d/
+crash.log

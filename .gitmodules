@@ -1,0 +1,3 @@
+[submodule "vendor/ekiden"]
+	path = vendor/ekiden
+	url = https://github.com/mirego/ekiden
