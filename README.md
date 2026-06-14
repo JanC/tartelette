@@ -55,6 +55,21 @@ git submodule update --init
 
 ## From zero to a green CI run
 
+### 0. (Optional) Keep Tart state inside this repo
+
+Tart defaults to `~/.tart` for its image cache and VMs. To keep everything
+inside this checkout (handy if your home volume is small or you want one-shot
+cleanup), point `TART_HOME` at a folder here and export it in every shell that
+runs `tart` / `packer` / `launch.sh`:
+
+```sh
+export TART_HOME="$PWD/.tart"
+mkdir -p "$TART_HOME"
+```
+
+Add it to your shell rc or prepend it to the commands below — otherwise Tart
+silently falls back to `~/.tart` and you'll wonder where the disk went.
+
 ### 1. Start the local registry
 
 ```sh
