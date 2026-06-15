@@ -132,7 +132,7 @@ runners, run N copies. Each needs a unique `RUNNER_NAME`, otherwise
 `config.sh --replace` makes them kick each other off in GitHub. Wrapper:
 
 ```sh
-./run-parallel.sh 3        # spawns runner-1, runner-2, runner-3
+./run-parallel.sh 2        # spawns runner-1, runner-2
 # Ctrl-C stops everything and cleans .runners/
 ```
 
