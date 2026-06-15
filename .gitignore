@@ -1,4 +1,5 @@
 .env
+*.pem
 *.log
 runner.log
 .runners/

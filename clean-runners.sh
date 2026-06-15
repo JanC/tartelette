@@ -3,8 +3,10 @@
 # .env (RUNNER_NAME). Useful after killing run-parallel.sh leaves orphans.
 #
 # Usage: ./clean-runners.sh [--offline-only]
-# Requires: jq, GITHUB_API_TOKEN and GITHUB_REGISTRATION_ENDPOINT in .env
-#           (the endpoint is parsed to derive repos/<owner>/<repo>).
+# Requires: jq, plus either
+#   GITHUB_AUTH_METHOD=token: GITHUB_API_TOKEN + GITHUB_REGISTRATION_ENDPOINT
+#   GITHUB_AUTH_METHOD=app:   GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY_PATH
+#                             + GITHUB_OWNER (+ GITHUB_REPO for repo scope)
 
 set -euo pipefail
 
@@ -14,18 +16,29 @@ SRC_ENV="$ROOT/.env"
 
 set -a; . "$SRC_ENV"; set +a
 
-: "${GITHUB_API_TOKEN:?GITHUB_API_TOKEN unset}"
-: "${GITHUB_REGISTRATION_ENDPOINT:?GITHUB_REGISTRATION_ENDPOINT unset}"
 : "${RUNNER_NAME:?RUNNER_NAME unset (used as the name prefix to match)}"
 
-# https://api.github.com/repos/<owner>/<repo>/actions/runners/registration-token
-# -> https://api.github.com/repos/<owner>/<repo>/actions/runners
-RUNNERS_URL="${GITHUB_REGISTRATION_ENDPOINT%/registration-token}"
+if [ "${GITHUB_AUTH_METHOD:-token}" = "app" ]; then
+  : "${GITHUB_OWNER:?GITHUB_OWNER unset}"
+  if [ -n "${GITHUB_REPO:-}" ]; then
+    RUNNERS_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runners"
+  else
+    RUNNERS_URL="https://api.github.com/orgs/${GITHUB_OWNER}/actions/runners"
+  fi
+  TOKEN=$(GH_TOKEN_KIND=installation "$ROOT/vendor/ekiden/host/gh-runner-token.sh")
+else
+  : "${GITHUB_API_TOKEN:?GITHUB_API_TOKEN unset}"
+  : "${GITHUB_REGISTRATION_ENDPOINT:?GITHUB_REGISTRATION_ENDPOINT unset}"
+  # https://api.github.com/repos/<owner>/<repo>/actions/runners/registration-token
+  # -> https://api.github.com/repos/<owner>/<repo>/actions/runners
+  RUNNERS_URL="${GITHUB_REGISTRATION_ENDPOINT%/registration-token}"
+  TOKEN="$GITHUB_API_TOKEN"
+fi
 
 OFFLINE_ONLY=0
 [ "${1:-}" = "--offline-only" ] && OFFLINE_ONLY=1
 
-list_json=$(curl -fsS -H "Authorization: bearer $GITHUB_API_TOKEN" "$RUNNERS_URL")
+list_json=$(curl -fsS -H "Authorization: bearer $TOKEN" "$RUNNERS_URL")
 
 filter='.runners[] | select(.name | startswith($p))'
 [ $OFFLINE_ONLY -eq 1 ] && filter="$filter | select(.status==\"offline\")"
@@ -46,6 +59,6 @@ read -r -p "delete the above ${#targets[@]} runner(s)? [y/N] " ans
 
 for line in "${targets[@]}"; do
   id="${line%% *}"
-  curl -fsS -X DELETE -H "Authorization: bearer $GITHUB_API_TOKEN" \
+  curl -fsS -X DELETE -H "Authorization: bearer $TOKEN" \
     "$RUNNERS_URL/$id" && echo "deleted $line"
 done
