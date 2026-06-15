@@ -7,10 +7,13 @@ Each CI job runs in a fresh [Tart](https://tart.run) VM cloned from a custom
 macOS + Xcode image (built with Packer, runner binary baked in). The VM
 registers as an **ephemeral** runner, runs exactly one job, then is destroyed.
 
+Both flows start with the same Packer step to [build the guest image](#build-the-guest-image).
+
 The default flow is **single-machine**: the same Mac that builds the image
-also runs the host loop and clones the VM directly from its local Tart store.
-A local OCI registry is only needed when the orchestrator runs on a different
-host than the one that built the image — see [Multi-host with a registry](#multi-host-with-a-registry).
+also runs the host loop and clones the VM directly from its local Tart store —
+no registry, no push, no pull. A local OCI registry is only needed when the
+orchestrator runs on a different host than the one that built the image — see
+[Multi-host with a registry](#multi-host-with-a-registry).
 
 ## How this relates to ekiden
 
@@ -46,22 +49,19 @@ git clone --recurse-submodules <this-repo>
 git submodule update --init
 ```
 
-## Single-machine flow
+## Build the guest image
 
-This is what you want when the same Mac builds the image and runs the jobs.
-ekiden's loop checks `tart list` for a local VM matching `REGISTRY_PATH` and
-only pulls when it isn't there ([launch.sh:165-179](vendor/ekiden/host/launch.sh#L165-L179)).
-With `REGISTRY_URL=` empty, `REGISTRY_PATH` collapses to the bare
-`REGISTRY_IMAGE_NAME` and the loop clones directly from the Packer-built VM.
+Required for both flows. Run on whichever Mac will produce the image
+(single-machine: this Mac; multi-host: the build host).
 
-### 1. (Optional) Keep Tart state on a specific disk
+### (Optional) Keep Tart state on a specific disk
 
 Tart defaults to `~/.tart`. Point `TART_HOME` somewhere else (e.g. an external
 NVMe) if you want and export it in every shell that runs `tart` / `packer` /
 `launch.sh`. The host loop also picks it up from `.env`, so the cleanest
 setup is to put `TART_HOME=/path/to/store` in `.env` and forget about it.
 
-### 2. Build the guest image
+### Run Packer
 
 ```sh
 cd guest
@@ -72,9 +72,18 @@ packer build .                          # defaults to xcode_image_tag=26.3
 
 This pulls `ghcr.io/cirruslabs/macos-tahoe-xcode:26.3` over HTTPS (no auth needed),
 boots it, downloads the latest GitHub Actions runner into `~/actions-runner`, and
-leaves a local VM named `atlas-app-ci`.
+leaves a local Tart VM named `atlas-app-ci`. Verify with `tart list`.
 
-### 3. Configure the host loop
+## Single-machine flow
+
+What you want when the same Mac builds the image and runs the jobs. ekiden's
+loop checks `tart list` for a local VM matching `REGISTRY_PATH` and only pulls
+when it isn't there ([launch.sh:165-179](vendor/ekiden/host/launch.sh#L165-L179)).
+With `REGISTRY_URL=` empty, `REGISTRY_PATH` collapses to the bare
+`REGISTRY_IMAGE_NAME` and the loop clones directly from the Packer-built VM —
+no push, no pull, no registry.
+
+### 1. Configure the host loop
 
 ```sh
 cp .env.example .env
@@ -84,19 +93,19 @@ Edit `.env`:
 - `GITHUB_API_TOKEN` — fine-grained PAT with `Administration: Read & write` on the target repo.
 - `REGISTRY_URL=` — leave empty for the single-machine flow.
 - `REGISTRY_IMAGE_NAME=atlas-app-ci` — bare VM name (no `:latest`; Packer doesn't tag).
-- `TART_HOME=` — set if you used step 1.
+- `TART_HOME=` — set if you used a custom Tart store above.
 
 `.env` is read by ekiden via `xargs`, which treats quote characters as
 delimiters even inside comments. **No `'` or `"` anywhere in the file**
 (including comments) — otherwise the loader silently fails to set any
 variable and the loop dies with `Target image not found`.
 
-### 4. Add the workflow
+### 2. Add the workflow
 
 Commit `.github/workflows/ci.yml` to the target repo. See
 [Example workflow](#example-workflow).
 
-### 5. Start the runner loop
+### 3. Start the runner loop
 
 From the repo root (so `launch.sh` finds `.env` and writes `runner.log` here):
 
@@ -108,7 +117,7 @@ It mints a registration token → clones+boots a VM → registers an ephemeral
 runner → waits for a job. One VM per job; Ctrl-C deletes the current VM
 and exits.
 
-### 6. Trigger and watch
+### 4. Trigger and watch
 
 Push to the target repo (or use **Run workflow** if you added `workflow_dispatch`).
 
@@ -176,9 +185,8 @@ rebuild + push.
    Port 5001, not 5000: macOS AirPlay Receiver squats on :5000 and intercepts
    pushes with HTTP 403.
 
-2. **Build and push** (on the build host):
+2. **Push the image** (on the build host, after [Build the guest image](#build-the-guest-image)):
    ```sh
-   cd guest && packer init . && packer build .
    tart push --insecure atlas-app-ci localhost:5001/atlas-app-ci:latest
    ```
 
