@@ -206,6 +206,11 @@ if the remote keeps its store elsewhere. Then on the mini: `tart list` shows
 `atlas-app-ci-26.3`, set `REGISTRY_IMAGE_NAME=atlas-app-ci-26.3` (and
 `REGISTRY_URL=` empty) in `.env`, and start the loop. Re-run after every rebuild.
 
+macOS ships openrsync, which can't write sparse files, so the copied
+`disk.img` lands fully expanded on the destination (the transfer itself stays
+cheap — `--compress` collapses the zero-holes). For a compact destination,
+`brew install rsync` (3.x); the task auto-detects it and adds `--sparse`.
+
 ## Multi-host with a registry
 
 Use this only when the orchestrator runs somewhere other than the build host

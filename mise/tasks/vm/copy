@@ -64,5 +64,17 @@ else
 fi
 
 ssh "$DEST" "mkdir -p '$DEST_VMS'"
-rsync -a --info=progress2 "$SRC" "$DEST:$DEST_VMS/"
+
+# Portable flags. macOS ships openrsync (since Sonoma), which lacks --info and
+# --sparse; fall back accordingly. --compress keeps the disk's zero-holes cheap
+# on the wire. Note: without --sparse (openrsync) the dest disk.img is written
+# fully expanded — for a compact dest, use rsync 3.x (brew install rsync).
+flags=(-a --compress)
+if rsync --help 2>&1 | grep -q -- '--info'; then
+  flags+=(--info=progress2)
+elif rsync --help 2>&1 | grep -q -- '--progress'; then
+  flags+=(--progress)
+fi
+rsync --help 2>&1 | grep -q -- '--sparse' && flags+=(--sparse)
+rsync "${flags[@]}" "$SRC" "$DEST:$DEST_VMS/"
 echo "done. On $DEST: tart list should show $VM"
