@@ -3,6 +3,7 @@
 #USAGE arg "<dest>" help="ssh destination host, e.g. user@mac-mini"
 #USAGE arg "<vm>" help="VM name from tart list, e.g. atlas-app-ci-26.3"
 #USAGE flag "--dest-store <path>" help="remote Tart store root (default: the remote's ~/.tart)"
+#USAGE flag "-y --yes" help="skip the confirmation prompt"
 # Copies the stopped VM's directory straight into the destination's Tart store.
 # `tart clone` is store-local and push/pull need a registry, so a plain rsync is
 # the simplest transport for a single consumer. Re-run after every rebuild.
@@ -33,6 +34,27 @@ if tart list --format json | jq -e --arg n "$VM" '.[] | select(.Name==$n and .Ru
   exit 1
 fi
 
+# Human-readable dest for the summary (avoid an ssh round-trip before confirm):
+# the real ~/.tart path is resolved on the remote only after the user agrees.
+if [ -n "${usage_dest_store:-}" ]; then
+  DEST_DISPLAY="${usage_dest_store}/vms"
+else
+  DEST_DISPLAY="~/.tart/vms (resolved on remote)"
+fi
+
+SIZE="$(du -sh "$SRC" 2>/dev/null | cut -f1)"
+cat <<SUMMARY
+About to copy a guest image:
+  VM:    $VM (${SIZE:-?} on disk)
+  from:  $SRC
+  to:    $DEST:$DEST_DISPLAY
+SUMMARY
+
+if [ "${usage_yes:-}" != "true" ]; then
+  read -r -p "proceed? [y/N] " ans
+  [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "aborted"; exit 0; }
+fi
+
 # Resolve the remote store on the remote host so ~/.tart expands against the
 # remote's $HOME, not ours. A custom --dest-store is used verbatim.
 if [ -n "${usage_dest_store:-}" ]; then
@@ -41,7 +63,6 @@ else
   DEST_VMS="$(ssh "$DEST" 'echo "${TART_HOME:-$HOME/.tart}/vms"')"
 fi
 
-echo "rsync $SRC -> $DEST:$DEST_VMS/"
 ssh "$DEST" "mkdir -p '$DEST_VMS'"
 rsync -a --info=progress2 "$SRC" "$DEST:$DEST_VMS/"
 echo "done. On $DEST: tart list should show $VM"
