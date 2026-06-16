@@ -33,6 +33,18 @@ RUNNERS_DIR="$ROOT/.runners"
 
 [ -f "$SRC_ENV" ] || { echo "missing $SRC_ENV" >&2; exit 1; }
 
+# Local-only flow (REGISTRY_URL empty): ekiden clones REGISTRY_IMAGE_NAME directly
+# and nothing pulls it, so it must already be in `tart list`. Fail fast with a
+# clear message instead of ekiden's infinite "does not exist" boot loop.
+REGISTRY_URL="$(grep -E '^REGISTRY_URL=' "$SRC_ENV" | head -1 | cut -d= -f2-)"
+IMAGE="$(grep -E '^REGISTRY_IMAGE_NAME=' "$SRC_ENV" | head -1 | cut -d= -f2-)"
+if [ -z "$REGISTRY_URL" ] && ! tart list --format json | jq -e --arg n "$IMAGE" '.[] | select(.Name==$n)' >/dev/null; then
+  echo "image '$IMAGE' (REGISTRY_IMAGE_NAME in .env) not found in tart list." >&2
+  echo "build it with 'mise run vm:build' or fix REGISTRY_IMAGE_NAME. Available:" >&2
+  tart list --format json | jq -r '.[] | select(.Source=="local" and (.Name|startswith("atlas-app-ci"))) | "  "+.Name' >&2
+  exit 1
+fi
+
 BASE_NAME="$(grep -E '^RUNNER_NAME=' "$SRC_ENV" | head -1 | cut -d= -f2-)"
 BASE_NAME="${BASE_NAME:-runner}"
 
