@@ -19,8 +19,9 @@
 #        mise run vm:copy user@mac-mini atlas-app-ci-26.3 --dest-store /Volumes/nvme/tart
 #        mise run vm:copy /Volumes/nvme/tart atlas-app-ci-26.3   # local path / mounted share
 #
-# Note: over an SMB mount the disk.img lands fully expanded (smbfs can't write
-# sparse). For a compact copy use ssh mode with rsync 3.x on both ends.
+# Requires Homebrew rsync (>= 3.1.0) at /opt/homebrew/bin/rsync; macOS openrsync
+# can't write sparse. In ssh mode the remote needs it there too (--rsync-path).
+# Caveat: an SMB-mounted dest still lands non-sparse (smbfs limitation).
 
 set -euo pipefail
 
@@ -33,6 +34,19 @@ SRC_STORE="${TART_HOME:-$HOME/.tart}"
 SRC="$SRC_STORE/vms/$VM"
 
 [ -d "$SRC" ] || { echo "no such VM dir: $SRC (check 'tart list')" >&2; exit 1; }
+
+# Use Homebrew rsync (3.x): macOS openrsync lacks --sparse/--info, so the image
+# would land fully expanded. Require >= 3.1.0 (--info=progress2) and fail loudly.
+RSYNC=/opt/homebrew/bin/rsync
+RSYNC_VER="$("$RSYNC" --version 2>/dev/null | sed -n '1s/.*version \([0-9][0-9.]*\).*/\1/p')"
+if [ -z "$RSYNC_VER" ]; then
+  echo "$RSYNC not found. Install it: brew install rsync" >&2
+  exit 1
+fi
+if [ "$(printf '%s\n3.1.0\n' "$RSYNC_VER" | sort -V | head -1)" != "3.1.0" ]; then
+  echo "$RSYNC is $RSYNC_VER; need >= 3.1.0. Upgrade: brew upgrade rsync" >&2
+  exit 1
+fi
 
 # Refuse to copy a running VM — its disk would be inconsistent.
 if tart list --format json | jq -e --arg n "$VM" '.[] | select(.Name==$n and .Running==true)' >/dev/null; then
@@ -85,17 +99,11 @@ else
   TARGET="$DEST:$DEST_VMS/"
 fi
 
-# Portable flags. macOS ships openrsync (since Sonoma), which lacks --info and
-# --sparse; fall back accordingly. --compress keeps the disk's zero-holes cheap
-# on the wire (no-op for a local/mounted copy). Note: without --sparse (openrsync,
-# or any SMB mount) the dest disk.img is written fully expanded — for a compact
-# dest, use ssh mode with rsync 3.x (brew install rsync) on both ends.
-flags=(-a --compress)
-if rsync --help 2>&1 | grep -q -- '--info'; then
-  flags+=(--info=progress2)
-elif rsync --help 2>&1 | grep -q -- '--progress'; then
-  flags+=(--progress)
-fi
-rsync --help 2>&1 | grep -q -- '--sparse' && flags+=(--sparse)
-rsync "${flags[@]}" "$SRC" "$TARGET"
+# --sparse keeps the disk.img compact; --compress collapses zero-holes on the
+# wire (no-op locally). In ssh mode the *receiver* writes the file, so point the
+# remote at Homebrew rsync too via --rsync-path (the copy fails if it's missing
+# there). Caveat: an SMB-mounted dest still lands non-sparse — smbfs can't.
+flags=(-a --compress --sparse --info=progress2)
+[ "$LOCAL" = 0 ] && flags+=(--rsync-path="$RSYNC")
+"$RSYNC" "${flags[@]}" "$SRC" "$TARGET"
 echo "done. tart list should show $VM on the destination."

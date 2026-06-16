@@ -214,11 +214,12 @@ Then on the mini: `tart list` shows `atlas-app-ci-26.3`, set
 `REGISTRY_IMAGE_NAME=atlas-app-ci-26.3` (and `REGISTRY_URL=` empty) in `.env`,
 and start the loop. Re-run after every rebuild.
 
-Sparseness caveat: macOS openrsync (and any SMB mount) can't write sparse, so
-the copied `disk.img` lands fully expanded — the wire transfer stays cheap
-(`--compress` collapses the zero-holes) but it occupies the full ~120 GB on the
-destination. For a compact copy, use **ssh mode** with `brew install rsync`
-(3.x) on **both** ends; the task auto-detects it and adds `--sparse`.
+The task uses Homebrew rsync (`/opt/homebrew/bin/rsync`, >= 3.1.0) and fails if
+it's missing or too old — macOS openrsync can't write sparse, so without it the
+`disk.img` would land fully expanded. `brew install rsync` on the build Mac (and
+in ssh mode on the destination too — the task points the remote at it via
+`--rsync-path`). Caveat: an **SMB-mounted** dest still lands non-sparse (~120 GB)
+regardless — smbfs can't punch holes; use ssh mode for a compact copy.
 
 ## Multi-host with a registry
 
