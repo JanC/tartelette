@@ -64,7 +64,7 @@ All repo scripting runs through mise (`mise tasks` to list):
 | Task | Does |
 |------|------|
 | `mise run vm:build [--xcode <tag>]` | build the guest image with Packer |
-| `mise run vm:copy <dest> <vm>` | rsync a built image to another host (no registry) |
+| `mise run vm:copy <dest> <vm> [--dest-store <path>]` | rsync a built image to another host (no registry) |
 | `mise run runners:start` | start a single ekiden host loop |
 | `mise run runners:parallel [N]` | run N host loops in parallel (default 2) |
 | `mise run runners:clean [--offline-only]` | deregister orphan runners on GitHub |
@@ -196,10 +196,13 @@ the simplest transport for a single consumer:
 
 ```sh
 mise run vm:copy user@mac-mini atlas-app-ci-26.3
+# remote uses a custom store?  add --dest-store /Volumes/nvme/tart
 ```
 
-The task refuses to copy a running VM, picks up `TART_HOME` from `.env`, and
-assumes the same store path on both ends. Then on the mini: `tart list` shows
+The task refuses to copy a running VM, reads the **source** store from local
+`TART_HOME` (else `~/.tart`), and writes to the **remote's** `~/.tart` —
+resolved on the remote, so a different home/user is fine. Pass `--dest-store`
+if the remote keeps its store elsewhere. Then on the mini: `tart list` shows
 `atlas-app-ci-26.3`, set `REGISTRY_IMAGE_NAME=atlas-app-ci-26.3` (and
 `REGISTRY_URL=` empty) in `.env`, and start the loop. Re-run after every rebuild.
 
