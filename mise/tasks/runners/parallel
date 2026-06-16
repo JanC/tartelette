@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Run N ekiden host loops in parallel (default 2)"
+#USAGE arg "[n]" help="number of concurrent host loops (default 2; macOS caps macOS VMs at 2)" default="2"
 # Each gets its own workdir with a per-runner .env so RUNNER_NAME stays unique
 # (ekiden reloads .env every iteration via `export $(xargs <.env)` and would
 # otherwise clobber any env-var override from the wrapper).
@@ -17,7 +18,14 @@ set -euo pipefail
 # ssh, sed, ...) with `kill -- -PGID`.
 set -m
 
-N="${1:-2}"
+N="${usage_n:-2}"
+case "$N" in
+  ''|*[!0-9]*) echo "N must be a positive integer (got: $N)" >&2; exit 1 ;;
+esac
+[ "$N" -ge 1 ] || { echo "N must be >= 1" >&2; exit 1; }
+# Apple's Virtualization framework caps macOS guests at 2 concurrent VMs.
+[ "$N" -gt 2 ] && echo "[parallel] warning: macOS allows at most 2 concurrent macOS VMs; VM $((2 + 1))+ will fail to boot" >&2
+
 ROOT="${MISE_PROJECT_ROOT:?run via 'mise run runners:parallel'}"
 LAUNCH="$ROOT/vendor/ekiden/host/launch.sh"
 SRC_ENV="$ROOT/.env"
@@ -37,16 +45,17 @@ cleanup() {
   [ $stopped -eq 1 ] && return
   stopped=1
   echo "[parallel] stopping"
-  # Signal each child's whole process group (negative pid = pgid).
-  for pid in "${pids[@]}"; do kill -TERM -- "-$pid" 2>/dev/null || true; done
+  # Signal each child's whole process group (negative pid = pgid). The
+  # ${pids[@]+...} guard keeps `set -u` happy when no loops were started yet.
+  for pid in ${pids[@]+"${pids[@]}"}; do kill -TERM -- "-$pid" 2>/dev/null || true; done
   # Give VMs ~5s to be deleted by ekiden's own SIGTERM trap, then force.
   for _ in 1 2 3 4 5; do
     sleep 1
     alive=0
-    for pid in "${pids[@]}"; do kill -0 "$pid" 2>/dev/null && alive=1; done
+    for pid in ${pids[@]+"${pids[@]}"}; do kill -0 "$pid" 2>/dev/null && alive=1; done
     [ $alive -eq 0 ] && break
   done
-  for pid in "${pids[@]}"; do kill -KILL -- "-$pid" 2>/dev/null || true; done
+  for pid in ${pids[@]+"${pids[@]}"}; do kill -KILL -- "-$pid" 2>/dev/null || true; done
   wait 2>/dev/null || true
   rm -rf "$RUNNERS_DIR"
   echo "[parallel] cleaned $RUNNERS_DIR"
