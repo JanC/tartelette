@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#MISE description="rsync a built guest image to another host (no registry)"
+#USAGE arg "<dest>" help="ssh destination host, e.g. user@mac-mini"
+#USAGE arg "<vm>" help="VM name from tart list, e.g. atlas-app-ci-26.3"
+# Copies the stopped VM's directory straight into the destination's Tart store.
+# `tart clone` is store-local and push/pull need a registry, so a plain rsync is
+# the simplest transport for a single consumer. Assumes the same store path on
+# both ends (TART_HOME from .env, else ~/.tart). Re-run after every rebuild.
+#
+# Usage: mise run vm:copy user@mac-mini atlas-app-ci-26.3
+
+set -euo pipefail
+
+ROOT="${MISE_PROJECT_ROOT:?run via 'mise run vm:copy'}"
+[ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
+
+DEST="${usage_dest:?destination host required}"
+VM="${usage_vm:?VM name required}"
+STORE="${TART_HOME:-$HOME/.tart}"
+SRC="$STORE/vms/$VM"
+
+[ -d "$SRC" ] || { echo "no such VM dir: $SRC (check 'tart list')" >&2; exit 1; }
+
+# Refuse to copy a running VM — its disk would be inconsistent.
+if tart list --format json | jq -e --arg n "$VM" '.[] | select(.Name==$n and .Running==true)' >/dev/null; then
+  echo "$VM is running; stop it before copying" >&2
+  exit 1
+fi
+
+echo "rsync $SRC -> $DEST:$STORE/vms/"
+ssh "$DEST" "mkdir -p '$STORE/vms'"
+rsync -a --info=progress2 "$SRC" "$DEST:$STORE/vms/"
+echo "done. On $DEST: tart list should show $VM"

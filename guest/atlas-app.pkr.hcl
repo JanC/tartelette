@@ -10,8 +10,13 @@
 // come from Tuist Cloud remote cache (see atlas-ios tuist-cache-warm.yml), and a
 // baked cache would bloat the snapshot and go stale on every dependency bump.
 //
-// After a successful build, push it to the local registry:
-//   tart push --insecure atlas-app-ci localhost:5001/atlas-app-ci:latest
+// The produced VM is named atlas-app-ci-<xcode_image_tag> (e.g. atlas-app-ci-26.3)
+// so multiple Xcode versions can coexist locally during an upgrade — there are no
+// image tags without a registry, so the version lives in the name. Point ekiden's
+// REGISTRY_IMAGE_NAME at the one you want.
+//
+// Multi-host only: push to the local registry afterwards, e.g.
+//   tart push --insecure atlas-app-ci-26.3 localhost:5001/atlas-app-ci:26.3
 
 packer {
   required_plugins {
@@ -30,7 +35,7 @@ variable "xcode_image_tag" {
 
 source "tart-cli" "atlas-app" {
   vm_base_name = "ghcr.io/cirruslabs/macos-tahoe-xcode:${var.xcode_image_tag}"
-  vm_name      = "atlas-app-ci"
+  vm_name      = "atlas-app-ci-${var.xcode_image_tag}"
   cpu_count    = 4
   memory_gb    = 8
   disk_size_gb = 120

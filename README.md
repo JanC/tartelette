@@ -27,7 +27,7 @@ Everything else here is a thin overlay:
 |------|---------|
 | `guest/atlas-app.pkr.hcl` | our Packer template — replaces ekiden's `guest/*.pkr.hcl` |
 | `.env.example` | config for ekiden's host loop, using **ekiden's own variable names** |
-| `mise.toml` | pins host tools (packer, jq) and registers the task runner |
+| `mise.toml` | pins host tools (tart, packer, jq) and registers the task runner |
 | `mise/tasks/` | all repo scripting, run via `mise run <task>` (see [Tasks](#tasks)) |
 | `registry/docker-compose.yml` | optional local `registry:2`, only for the multi-host flow |
 
@@ -40,12 +40,12 @@ we base directly on the prebuilt cirruslabs Xcode image (user `admin`).
 ## Prerequisites
 
 ```sh
-brew install cirruslabs/cli/tart        # Tart (no clean mise backend)
-brew install hudochenkov/sshpass/sshpass # ekiden shells into the VM via sshpass (not in core Homebrew)
-brew install mise                        # task runner + pins packer/jq
+brew install mise                        # task runner + pins tart/packer/jq
+brew install hudochenkov/sshpass/sshpass # ekiden shells into the VM via sshpass (no mise backend)
 ```
 
-`packer` and `jq` are pinned in `mise.toml` — no need to brew them.
+`tart`, `packer`, and `jq` are pinned in `mise.toml` — `mise install` (below)
+provides them, so only `sshpass` needs Homebrew.
 
 ```sh
 git clone --recurse-submodules <this-repo>
@@ -54,7 +54,7 @@ git submodule update --init
 
 cd tart-ci
 mise trust        # approve this repo's mise.toml + tasks
-mise install      # install the pinned packer/jq
+mise install      # install the pinned tart/packer/jq
 ```
 
 ## Tasks
@@ -64,6 +64,7 @@ All repo scripting runs through mise (`mise tasks` to list):
 | Task | Does |
 |------|------|
 | `mise run vm:build [--xcode <tag>]` | build the guest image with Packer |
+| `mise run vm:copy <dest> <vm>` | rsync a built image to another host (no registry) |
 | `mise run runners:start` | start a single ekiden host loop |
 | `mise run runners:parallel [N]` | run N host loops in parallel (default 2) |
 | `mise run runners:clean [--offline-only]` | deregister orphan runners on GitHub |
@@ -89,9 +90,12 @@ mise run vm:build --xcode 26.4.1        # pin a different Xcode/macOS base
 ```
 
 This pulls `ghcr.io/cirruslabs/macos-tahoe-xcode:26.3` over HTTPS (no auth needed),
-boots it, bakes the CI toolchain on top, and leaves a local Tart VM named
-`atlas-app-ci`. Verify with `tart list`. For exactly what's installed and why,
-see [What's baked into the guest image](guest/IMAGE_CONTENTS.md).
+boots it, bakes the CI toolchain on top, and leaves a local Tart VM named after
+the base tag — `atlas-app-ci-26.3`. The Xcode version lives in the name (there
+are no image tags without a registry) so an upgrade can build `atlas-app-ci-26.4`
+alongside the old one and you flip over by pointing `REGISTRY_IMAGE_NAME` at it.
+Verify with `tart list`. For exactly what's baked, see
+[What's baked into the guest image](guest/IMAGE_CONTENTS.md).
 
 ## Single-machine flow
 
@@ -111,7 +115,7 @@ cp .env.example .env
 Edit `.env`:
 - `GITHUB_API_TOKEN` — fine-grained PAT with `Administration: Read & write` on the target repo.
 - `REGISTRY_URL=` — leave empty for the single-machine flow.
-- `REGISTRY_IMAGE_NAME=atlas-app-ci` — bare VM name (no `:latest`; Packer doesn't tag).
+- `REGISTRY_IMAGE_NAME=atlas-app-ci-26.3` — the VM name from `tart list` (matches the Xcode tag you built).
 - `TART_HOME=` — set if you used a custom Tart store above.
 
 `.env` is read by ekiden via `xargs`, which treats quote characters as
@@ -183,6 +187,22 @@ mise run vm:clean        # lists stopped runner_* clones, confirms, deletes
 mise run vm:clean -y     # skip the prompt
 ```
 
+## Copying the image to another host (no registry)
+
+When the build Mac and the runner host differ but you don't want to stand up a
+registry, copy the VM directory straight across. `tart clone` is store-local
+and `tart push`/`pull` need a registry, so a plain `rsync` of the stopped VM is
+the simplest transport for a single consumer:
+
+```sh
+mise run vm:copy user@mac-mini atlas-app-ci-26.3
+```
+
+The task refuses to copy a running VM, picks up `TART_HOME` from `.env`, and
+assumes the same store path on both ends. Then on the mini: `tart list` shows
+`atlas-app-ci-26.3`, set `REGISTRY_IMAGE_NAME=atlas-app-ci-26.3` (and
+`REGISTRY_URL=` empty) in `.env`, and start the loop. Re-run after every rebuild.
+
 ## Multi-host with a registry
 
 Use this only when the orchestrator runs somewhere other than the build host
@@ -213,21 +233,23 @@ rebuild + push.
    Port 5001, not 5000: macOS AirPlay Receiver squats on :5000 and intercepts
    pushes with HTTP 403.
 
-2. **Push the image** (on the build host, after [Build the guest image](#build-the-guest-image)):
+2. **Push the image** (on the build host, after [Build the guest image](#build-the-guest-image)).
+   With a registry the version belongs in the tag, so map the local
+   `atlas-app-ci-26.3` to `atlas-app-ci:26.3`:
    ```sh
-   tart push --insecure atlas-app-ci localhost:5001/atlas-app-ci:latest
+   tart push --insecure atlas-app-ci-26.3 localhost:5001/atlas-app-ci:26.3
    ```
 
 3. **Pre-pull on each orchestrator host**:
    ```sh
-   tart pull --insecure localhost:5001/atlas-app-ci:latest
-   tart list   # should show localhost:5001/atlas-app-ci:latest
+   tart pull --insecure localhost:5001/atlas-app-ci:26.3
+   tart list   # should show localhost:5001/atlas-app-ci:26.3
    ```
 
 4. **Configure `.env`** on each orchestrator:
    ```
    REGISTRY_URL=localhost:5001
-   REGISTRY_IMAGE_NAME=atlas-app-ci:latest
+   REGISTRY_IMAGE_NAME=atlas-app-ci:26.3
    ```
 
 5. **Start the loop** (`bash vendor/ekiden/host/launch.sh`). It finds the
@@ -279,7 +301,7 @@ delimiters and bails). Strip them all, even from comments.
 
 **VM never gets an IP** — `tart ip <name>` hangs forever. The VM failed to
 boot or networking didn't come up. Run once with graphics to watch:
-`tart run atlas-app-ci`. Confirm the image actually booted during `packer build`.
+`tart run atlas-app-ci-26.3`. Confirm the image actually booted during the build.
 
 **SSH never reachable** — loop stuck at "Waiting for SSH". Almost always a
 user/password mismatch: cirruslabs images use `admin/admin`; ensure
@@ -325,7 +347,7 @@ plain-HTTP registry.
 
 **Multi-host: orchestrator pulls over HTTPS and fails** — image wasn't
 pre-cached on that host. Re-run the pre-pull step; confirm `tart list` shows
-`localhost:5001/atlas-app-ci:latest` before starting `launch.sh`.
+`localhost:5001/atlas-app-ci:26.3` before starting the loop.
 
 ## Not in scope (yet)
 

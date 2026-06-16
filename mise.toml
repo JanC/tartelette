@@ -1,9 +1,9 @@
 # Host-side tooling and task runner for tart-ci.
 #
-# `tart` and `sshpass` stay on Homebrew (no clean mise backend); see the
-# Prerequisites section in README.md. Everything scriptable runs through
-# `mise run <task>` — tasks live as files under mise/tasks/.
+# Only `sshpass` stays on Homebrew (no mise backend). Everything scriptable
+# runs through `mise run <task>` — tasks live as files under mise/tasks/.
 
 [tools]
+"aqua:cirruslabs/tart" = "2.32.1"
 packer = "1.15.4"
 jq = "1.8.1"
