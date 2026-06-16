@@ -64,7 +64,7 @@ All repo scripting runs through mise (`mise tasks` to list):
 | Task | Does |
 |------|------|
 | `mise run vm:build [--xcode <tag>]` | build the guest image with Packer |
-| `mise run vm:copy <dest> <vm> [--dest-store <path>]` | rsync a built image to another host (no registry) |
+| `mise run vm:copy <dest> <vm> [--dest-store <path>]` | rsync a built image to an ssh host or local path (no registry) |
 | `mise run runners:start` | start a single ekiden host loop |
 | `mise run runners:parallel [N]` | run N host loops in parallel (default 2) |
 | `mise run runners:clean [--offline-only]` | deregister orphan runners on GitHub |
@@ -197,19 +197,28 @@ the simplest transport for a single consumer:
 ```sh
 mise run vm:copy user@mac-mini atlas-app-ci-26.3
 # remote uses a custom store?  add --dest-store /Volumes/nvme/tart
+# dest is a local path / mounted share (a Tart store root)?
+mise run vm:copy /Volumes/nvme/tart atlas-app-ci-26.3
 ```
 
-The task refuses to copy a running VM, reads the **source** store from local
-`TART_HOME` (else `~/.tart`), and writes to the **remote's** `~/.tart` —
-resolved on the remote, so a different home/user is fine. Pass `--dest-store`
-if the remote keeps its store elsewhere. Then on the mini: `tart list` shows
-`atlas-app-ci-26.3`, set `REGISTRY_IMAGE_NAME=atlas-app-ci-26.3` (and
-`REGISTRY_URL=` empty) in `.env`, and start the loop. Re-run after every rebuild.
+The task refuses to copy a running VM and reads the **source** store from local
+`TART_HOME` (else `~/.tart`). The dest can be either:
 
-macOS ships openrsync, which can't write sparse files, so the copied
-`disk.img` lands fully expanded on the destination (the transfer itself stays
-cheap — `--compress` collapses the zero-holes). For a compact destination,
-`brew install rsync` (3.x); the task auto-detects it and adds `--sparse`.
+- an **ssh host** — writes to the *remote's* `~/.tart` (resolved on the remote,
+  so a different home/user is fine; pass `--dest-store` if it keeps its store
+  elsewhere), or
+- a **local path** (anything starting with `/` `~` `.`, e.g. a mounted share) —
+  treated as the Tart store root; the VM lands in `<path>/vms/`.
+
+Then on the mini: `tart list` shows `atlas-app-ci-26.3`, set
+`REGISTRY_IMAGE_NAME=atlas-app-ci-26.3` (and `REGISTRY_URL=` empty) in `.env`,
+and start the loop. Re-run after every rebuild.
+
+Sparseness caveat: macOS openrsync (and any SMB mount) can't write sparse, so
+the copied `disk.img` lands fully expanded — the wire transfer stays cheap
+(`--compress` collapses the zero-holes) but it occupies the full ~120 GB on the
+destination. For a compact copy, use **ssh mode** with `brew install rsync`
+(3.x) on **both** ends; the task auto-detects it and adds `--sparse`.
 
 ## Multi-host with a registry
 

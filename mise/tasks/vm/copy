@@ -1,27 +1,33 @@
 #!/usr/bin/env bash
-#MISE description="rsync a built guest image to another host (no registry)"
-#USAGE arg "<dest>" help="ssh destination host, e.g. user@mac-mini"
+#MISE description="rsync a built guest image to another host or a local path (no registry)"
+#USAGE arg "<dest>" help="ssh host (user@mac-mini) OR a local Tart store path (/Volumes/nvme/tart)"
 #USAGE arg "<vm>" help="VM name from tart list, e.g. atlas-app-ci-26.3"
-#USAGE flag "--dest-store <path>" help="remote Tart store root (default: the remote's ~/.tart)"
+#USAGE flag "--dest-store <path>" help="remote Tart store root (ssh mode only; default: the remote's ~/.tart)"
 #USAGE flag "-y --yes" help="skip the confirmation prompt"
 # Copies the stopped VM's directory straight into the destination's Tart store.
 # `tart clone` is store-local and push/pull need a registry, so a plain rsync is
 # the simplest transport for a single consumer. Re-run after every rebuild.
 #
+# Dest is an ssh host OR a local path (one starting with / ~ or .), e.g. a mounted
+# share. Local path = the Tart store root; the VM lands in <path>/vms/.
+#
 # Source store: local TART_HOME (from .env) else ~/.tart.
-# Dest store:   --dest-store if given, else the *remote's* ~/.tart (NOT the local
-#               path — the remote's home/TART_HOME may differ). If the remote uses
-#               a custom TART_HOME, pass it via --dest-store.
+# Dest store (ssh): --dest-store if given, else the *remote's* ~/.tart (NOT the
+#   local path — the remote's home/TART_HOME may differ).
 #
 # Usage: mise run vm:copy user@mac-mini atlas-app-ci-26.3
 #        mise run vm:copy user@mac-mini atlas-app-ci-26.3 --dest-store /Volumes/nvme/tart
+#        mise run vm:copy /Volumes/nvme/tart atlas-app-ci-26.3   # local path / mounted share
+#
+# Note: over an SMB mount the disk.img lands fully expanded (smbfs can't write
+# sparse). For a compact copy use ssh mode with rsync 3.x on both ends.
 
 set -euo pipefail
 
 ROOT="${MISE_PROJECT_ROOT:?run via 'mise run vm:copy'}"
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
 
-DEST="${usage_dest:?destination host required}"
+DEST="${usage_dest:?destination required}"
 VM="${usage_vm:?VM name required}"
 SRC_STORE="${TART_HOME:-$HOME/.tart}"
 SRC="$SRC_STORE/vms/$VM"
@@ -34,12 +40,21 @@ if tart list --format json | jq -e --arg n "$VM" '.[] | select(.Name==$n and .Ru
   exit 1
 fi
 
-# Human-readable dest for the summary (avoid an ssh round-trip before confirm):
-# the real ~/.tart path is resolved on the remote only after the user agrees.
-if [ -n "${usage_dest_store:-}" ]; then
-  DEST_DISPLAY="${usage_dest_store}/vms"
+# A dest starting with / ~ or . is a local path (the Tart store root); anything
+# else is an ssh host.
+case "$DEST" in
+  /*|~*|.*) LOCAL=1 ;;
+  *)        LOCAL=0 ;;
+esac
+
+# Human-readable dest for the summary (avoid an ssh round-trip before confirm).
+if [ "$LOCAL" = 1 ]; then
+  DEST_VMS="${DEST%/}/vms"
+  TO="$DEST_VMS/"
+elif [ -n "${usage_dest_store:-}" ]; then
+  TO="$DEST:${usage_dest_store}/vms/"
 else
-  DEST_DISPLAY="~/.tart/vms (resolved on remote)"
+  TO="$DEST:~/.tart/vms/ (resolved on remote)"
 fi
 
 SIZE="$(du -sh "$SRC" 2>/dev/null | cut -f1)"
@@ -47,7 +62,7 @@ cat <<SUMMARY
 About to copy a guest image:
   VM:    $VM (${SIZE:-?} on disk)
   from:  $SRC
-  to:    $DEST:$DEST_DISPLAY
+  to:    $TO
 SUMMARY
 
 if [ "${usage_yes:-}" != "true" ]; then
@@ -55,20 +70,26 @@ if [ "${usage_yes:-}" != "true" ]; then
   [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "aborted"; exit 0; }
 fi
 
-# Resolve the remote store on the remote host so ~/.tart expands against the
-# remote's $HOME, not ours. A custom --dest-store is used verbatim.
-if [ -n "${usage_dest_store:-}" ]; then
-  DEST_VMS="${usage_dest_store}/vms"
+# Resolve the dest /vms dir and create it. For ssh mode without --dest-store,
+# resolve ~/.tart on the remote so it expands against the remote's $HOME.
+if [ "$LOCAL" = 1 ]; then
+  mkdir -p "$DEST_VMS"
+  TARGET="$DEST_VMS/"
 else
-  DEST_VMS="$(ssh "$DEST" 'echo "${TART_HOME:-$HOME/.tart}/vms"')"
+  if [ -n "${usage_dest_store:-}" ]; then
+    DEST_VMS="${usage_dest_store}/vms"
+  else
+    DEST_VMS="$(ssh "$DEST" 'echo "${TART_HOME:-$HOME/.tart}/vms"')"
+  fi
+  ssh "$DEST" "mkdir -p '$DEST_VMS'"
+  TARGET="$DEST:$DEST_VMS/"
 fi
-
-ssh "$DEST" "mkdir -p '$DEST_VMS'"
 
 # Portable flags. macOS ships openrsync (since Sonoma), which lacks --info and
 # --sparse; fall back accordingly. --compress keeps the disk's zero-holes cheap
-# on the wire. Note: without --sparse (openrsync) the dest disk.img is written
-# fully expanded — for a compact dest, use rsync 3.x (brew install rsync).
+# on the wire (no-op for a local/mounted copy). Note: without --sparse (openrsync,
+# or any SMB mount) the dest disk.img is written fully expanded — for a compact
+# dest, use ssh mode with rsync 3.x (brew install rsync) on both ends.
 flags=(-a --compress)
 if rsync --help 2>&1 | grep -q -- '--info'; then
   flags+=(--info=progress2)
@@ -76,5 +97,5 @@ elif rsync --help 2>&1 | grep -q -- '--progress'; then
   flags+=(--progress)
 fi
 rsync --help 2>&1 | grep -q -- '--sparse' && flags+=(--sparse)
-rsync "${flags[@]}" "$SRC" "$DEST:$DEST_VMS/"
-echo "done. On $DEST: tart list should show $VM"
+rsync "${flags[@]}" "$SRC" "$TARGET"
+echo "done. tart list should show $VM on the destination."
