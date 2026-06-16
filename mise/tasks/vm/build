@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#MISE description="Build the CI guest image with Packer"
+#USAGE flag "--xcode <tag>" help="cirruslabs macos-tahoe-xcode tag to base on (overrides the Packer default)"
+# Runs `packer init` + `packer build` in guest/. Pass --xcode to pin a
+# different Xcode/macOS base, e.g. `mise run vm:build --xcode 26.4`.
+#
+# Requires: packer (via mise [tools]), tart (Homebrew).
+
+set -euo pipefail
+
+ROOT="${MISE_PROJECT_ROOT:?run via 'mise run vm:build'}"
+cd "$ROOT/guest"
+
+build_args=()
+[ -n "${usage_xcode:-}" ] && build_args+=(-var "xcode_image_tag=${usage_xcode}")
+
+packer init .
+packer build "${build_args[@]}" .

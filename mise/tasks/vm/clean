@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Delete dead ekiden job-VM clones from the local Tart store. Each job clones a
-# VM named `runner_<RUNNER_NAME>_<random>` and deletes it after the job; loops
-# that are Ctrl-C'd or crash leave these behind (see `tart list`).
+#MISE description="Delete dead ekiden job-VM clones from the local Tart store"
+# Each job clones a VM named `runner_<RUNNER_NAME>_<random>` and deletes it after
+# the job; loops that are Ctrl-C'd or crash leave these behind (see `tart list`).
 #
 # This is the Tart-side cleanup. It does NOT deregister runners on GitHub —
-# use ./clean-runners.sh for that.
+# use `mise run runners:clean` for that.
 #
-# Usage: ./clean-vms.sh [-y|--yes] [PREFIX]
+# Usage: mise run vm:clean [-y|--yes] [PREFIX]
 #   PREFIX defaults to "runner_" (the prefix ekiden gives every job clone).
 #   -y/--yes skips the confirmation prompt.
 #
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="${MISE_PROJECT_ROOT:?run via 'mise run vm:clean'}"
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
 
 ASSUME_YES=0

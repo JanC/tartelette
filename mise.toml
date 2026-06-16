@@ -1,0 +1,9 @@
+# Host-side tooling and task runner for tart-ci.
+#
+# `tart` and `sshpass` stay on Homebrew (no clean mise backend); see the
+# Prerequisites section in README.md. Everything scriptable runs through
+# `mise run <task>` — tasks live as files under mise/tasks/.
+
+[tools]
+packer = "1.15.4"
+jq = "1.8.1"

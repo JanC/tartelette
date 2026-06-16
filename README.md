@@ -27,8 +27,8 @@ Everything else here is a thin overlay:
 |------|---------|
 | `guest/atlas-app.pkr.hcl` | our Packer template — replaces ekiden's `guest/*.pkr.hcl` |
 | `.env.example` | config for ekiden's host loop, using **ekiden's own variable names** |
-| `run-parallel.sh` | wrapper to run N concurrent host loops |
-| `clean-runners.sh` | deregister orphan runners from GitHub |
+| `mise.toml` | pins host tools (packer, jq) and registers the task runner |
+| `mise/tasks/` | all repo scripting, run via `mise run <task>` (see [Tasks](#tasks)) |
 | `registry/docker-compose.yml` | optional local `registry:2`, only for the multi-host flow |
 
 The **host run-loop is ekiden's** (`vendor/ekiden/host/launch.sh`) — we don't
@@ -40,16 +40,34 @@ we base directly on the prebuilt cirruslabs Xcode image (user `admin`).
 ## Prerequisites
 
 ```sh
-brew install cirruslabs/cli/tart        # Tart
-brew install packer jq                   # Packer + jq (uuidgen ships with macOS)
-brew install hudochenkov/sshpass/sshpass # launch.sh shells into the VM via sshpass (not in core Homebrew)
+brew install cirruslabs/cli/tart        # Tart (no clean mise backend)
+brew install hudochenkov/sshpass/sshpass # ekiden shells into the VM via sshpass (not in core Homebrew)
+brew install mise                        # task runner + pins packer/jq
 ```
+
+`packer` and `jq` are pinned in `mise.toml` — no need to brew them.
 
 ```sh
 git clone --recurse-submodules <this-repo>
 # already cloned without --recurse-submodules?
 git submodule update --init
+
+cd tart-ci
+mise trust        # approve this repo's mise.toml + tasks
+mise install      # install the pinned packer/jq
 ```
+
+## Tasks
+
+All repo scripting runs through mise (`mise tasks` to list):
+
+| Task | Does |
+|------|------|
+| `mise run vm:build [--xcode <tag>]` | build the guest image with Packer |
+| `mise run runners:start` | start a single ekiden host loop |
+| `mise run runners:parallel [N]` | run N host loops in parallel (default 2) |
+| `mise run runners:clean [--offline-only]` | deregister orphan runners on GitHub |
+| `mise run vm:clean [-y] [PREFIX]` | delete dead job-VM clones from the local Tart store |
 
 ## Build the guest image
 
@@ -66,10 +84,8 @@ setup is to put `TART_HOME=/path/to/store` in `.env` and forget about it.
 ### Run Packer
 
 ```sh
-cd guest
-packer init .
-packer build .                          # defaults to xcode_image_tag=26.3
-# pin a different Xcode/macOS:  packer build -var xcode_image_tag=26.4.1 .
+mise run vm:build                       # defaults to xcode_image_tag=26.3
+mise run vm:build --xcode 26.4.1        # pin a different Xcode/macOS base
 ```
 
 This pulls `ghcr.io/cirruslabs/macos-tahoe-xcode:26.3` over HTTPS (no auth needed),
@@ -110,10 +126,10 @@ Commit `.github/workflows/ci.yml` to the target repo. See
 
 ### 3. Start the runner loop
 
-From the repo root (so `launch.sh` finds `.env` and writes `runner.log` here):
+From the repo root (so the loop finds `.env` and writes `runner.log` here):
 
 ```sh
-bash vendor/ekiden/host/launch.sh
+mise run runners:start
 ```
 
 It mints a registration token → clones+boots a VM → registers an ephemeral
@@ -132,15 +148,15 @@ Push to the target repo (or use **Run workflow** if you added `workflow_dispatch
 
 `launch.sh` is a single serial loop (one VM at a time). For N concurrent
 runners, run N copies. Each needs a unique `RUNNER_NAME`, otherwise
-`config.sh --replace` makes them kick each other off in GitHub. Wrapper:
+`config.sh --replace` makes them kick each other off in GitHub:
 
 ```sh
-./run-parallel.sh 2        # spawns runner-1, runner-2
+mise run runners:parallel 2   # spawns runner-1, runner-2
 # Ctrl-C stops everything and cleans .runners/
 ```
 
 Each runner gets its own workdir under `.runners/runner-N` with a per-runner
-`.env` (the wrapper rewrites `RUNNER_NAME` because ekiden reloads `.env` every
+`.env` (the task rewrites `RUNNER_NAME` because ekiden reloads `.env` every
 iteration and would otherwise clobber any env-var override). Stdout is
 prefixed per runner; per-runner logs land at `.runners/runner-N/runner.log`.
 
@@ -154,8 +170,8 @@ Killing the loop mid-listen leaves runners registered (offline) in GitHub
 until GC (~14 days). Clean them up by prefix:
 
 ```sh
-./clean-runners.sh                # all matching RUNNER_NAME prefix
-./clean-runners.sh --offline-only # only the stale ones
+mise run runners:clean                # all matching RUNNER_NAME prefix
+mise run runners:clean --offline-only # only the stale ones
 ```
 
 That's the GitHub side. The same crashes also leave the **job-VM clones**
@@ -163,8 +179,8 @@ That's the GitHub side. The same crashes also leave the **job-VM clones**
 those with the Tart-side counterpart — it skips any VM that's still running:
 
 ```sh
-./clean-vms.sh        # lists stopped runner_* clones, confirms, deletes
-./clean-vms.sh -y     # skip the prompt
+mise run vm:clean        # lists stopped runner_* clones, confirms, deletes
+mise run vm:clean -y     # skip the prompt
 ```
 
 ## Multi-host with a registry
@@ -285,14 +301,15 @@ You should get a JSON `token`, not a `message`/404.
 
 **Two parallel jobs but only one runs** — both runners registered with the
 same name. `RUNNER_NAME` in `.env` overrides any env-var override from a
-wrapper (ekiden reloads `.env` every iteration). Use `run-parallel.sh` —
-it materializes a per-runner `.env` to dodge this.
+wrapper (ekiden reloads `.env` every iteration). Use `mise run runners:parallel`
+— it materializes a per-runner `.env` to dodge this.
 
 **`packer build`: disk size … smaller than current** — `disk_size_gb` in
 `atlas-app.pkr.hcl` is below the base image's actual size. Tart can grow,
 not shrink. Bump it to at least the base size.
 
-**`packer build` can't find the plugin** — run `packer init .` in `guest/` first.
+**`packer build` can't find the plugin** — `mise run vm:build` runs `packer init`
+first; if you invoke packer by hand, run `packer init .` in `guest/` first.
 
 **Image tag doesn't exist** — `26.3` is valid as of writing; newest is `26.5`.
 List tags:

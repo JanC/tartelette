@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Start a single ekiden host loop (one VM per job)"
+# Thin wrapper over ekiden's host loop. It reads .env from the repo root and
+# registers one ephemeral runner; Ctrl-C deletes the current VM and exits.
+# For N concurrent runners use `mise run runners:parallel`.
+
+set -euo pipefail
+
+ROOT="${MISE_PROJECT_ROOT:?run via 'mise run runners:start'}"
+cd "$ROOT"
+exec bash vendor/ekiden/host/launch.sh

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Deregister GitHub Actions runners whose name starts with the BASE_NAME from
-# .env (RUNNER_NAME). Useful after killing run-parallel.sh leaves orphans.
+#MISE description="Deregister GitHub Actions runners by RUNNER_NAME prefix"
+# Matches runners whose name starts with RUNNER_NAME from .env. Useful after
+# killing runners:parallel leaves orphans registered in GitHub.
 #
-# Usage: ./clean-runners.sh [--offline-only]
+# Usage: mise run runners:clean [--offline-only]
 # Requires: jq, plus either
 #   GITHUB_AUTH_METHOD=token: GITHUB_API_TOKEN + GITHUB_REGISTRATION_ENDPOINT
 #   GITHUB_AUTH_METHOD=app:   GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY_PATH
@@ -10,7 +11,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="${MISE_PROJECT_ROOT:?run via 'mise run runners:clean'}"
 SRC_ENV="$ROOT/.env"
 [ -f "$SRC_ENV" ] || { echo "missing $SRC_ENV" >&2; exit 1; }
 
