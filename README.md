@@ -4,8 +4,10 @@ Ephemeral macOS GitHub Actions runners on Apple Silicon, built on
 [ekiden](https://github.com/mirego/ekiden).
 
 Each CI job runs in a fresh [Tart](https://tart.run) VM cloned from a custom
-macOS + Xcode image (built with Packer, runner binary baked in). The VM
-registers as an **ephemeral** runner, runs exactly one job, then is destroyed.
+macOS + Xcode image (built with Packer). The VM registers as an **ephemeral**
+runner, runs exactly one job, then is destroyed. See
+[What's baked into the guest image](guest/IMAGE_CONTENTS.md) for the full
+contents (runner binary, Metal toolchain, mise toolchain, Maestro).
 
 Both flows start with the same Packer step to [build the guest image](#build-the-guest-image).
 
@@ -71,8 +73,9 @@ packer build .                          # defaults to xcode_image_tag=26.3
 ```
 
 This pulls `ghcr.io/cirruslabs/macos-tahoe-xcode:26.3` over HTTPS (no auth needed),
-boots it, downloads the latest GitHub Actions runner into `~/actions-runner`, and
-leaves a local Tart VM named `atlas-app-ci`. Verify with `tart list`.
+boots it, bakes the CI toolchain on top, and leaves a local Tart VM named
+`atlas-app-ci`. Verify with `tart list`. For exactly what's installed and why,
+see [What's baked into the guest image](guest/IMAGE_CONTENTS.md).
 
 ## Single-machine flow
 
@@ -153,6 +156,15 @@ until GC (~14 days). Clean them up by prefix:
 ```sh
 ./clean-runners.sh                # all matching RUNNER_NAME prefix
 ./clean-runners.sh --offline-only # only the stale ones
+```
+
+That's the GitHub side. The same crashes also leave the **job-VM clones**
+(`runner_<name>_<random>`) behind in the local Tart store (`tart list`). Clear
+those with the Tart-side counterpart — it skips any VM that's still running:
+
+```sh
+./clean-vms.sh        # lists stopped runner_* clones, confirms, deletes
+./clean-vms.sh -y     # skip the prompt
 ```
 
 ## Multi-host with a registry

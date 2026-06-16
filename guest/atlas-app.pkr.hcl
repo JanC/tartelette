@@ -1,8 +1,14 @@
 // Builds the CI guest image for JanC/tuist-app.
 //
-// Base = cirruslabs macOS+Xcode image (user/pass admin/admin, Xcode preinstalled),
-// so all we bake in is the GitHub Actions runner binary. The runner is NOT
-// configured/registered here — ekiden's host loop does that per job (ephemeral).
+// Base = cirruslabs macOS+Xcode image (user/pass admin/admin, Xcode preinstalled).
+// On top we bake the per-job CI setup the iOS repos repeat on every run:
+//   - GitHub Actions runner binary (NOT configured here — ekiden registers it per job, ephemeral)
+//   - Metal toolchain + Xcode first-launch (mirrors atlas-ios ci_scripts/ci_post_clone.sh)
+//   - mise + pinned iOS toolchain (tuist/swiftlint/swiftformat/uv/periphery/firebase-tools/xcbeautify)
+//   - Maestro CLI + Temurin 21 (atlas-ios e2e-nightly)
+// We deliberately do NOT bake a warm SPM/Tuist module cache — external modules
+// come from Tuist Cloud remote cache (see atlas-ios tuist-cache-warm.yml), and a
+// baked cache would bloat the snapshot and go stale on every dependency bump.
 //
 // After a successful build, push it to the local registry:
 //   tart push --insecure atlas-app-ci localhost:5001/atlas-app-ci:latest
@@ -48,6 +54,65 @@ build {
       "curl -O -L https://github.com/actions/runner/releases/download/$RUNNER_TAG/actions-runner-osx-arm64-$RUNNER_VERSION.tar.gz",
       "tar xzf ./actions-runner-osx-arm64-$RUNNER_VERSION.tar.gz",
       "rm actions-runner-osx-arm64-$RUNNER_VERSION.tar.gz",
+    ]
+  }
+
+  // Metal toolchain + Xcode first-launch. Mirrors atlas-ios ci_scripts/ci_post_clone.sh,
+  // which both iOS repos run on every job via the setup-ios-toolchain composite action.
+  // Baking it here makes that step a no-op at job time (the download is large and flaky).
+  provisioner "shell" {
+    inline = [
+      "source ~/.zprofile || true",
+      "echo \"Xcode: $(xcodebuild -version)\"",
+      "TOOLCHAIN_DIR=$(mktemp -d)/MetalToolchain && mkdir -p \"$TOOLCHAIN_DIR\"",
+      "if xcodebuild -help 2>&1 | grep -q -- '-downloadComponent'; then",
+      "  xcodebuild -downloadComponent metalToolchain -exportPath \"$TOOLCHAIN_DIR\" || xcodebuild -downloadComponent MetalToolchain -exportPath \"$TOOLCHAIN_DIR\" || echo 'Metal toolchain download skipped (may be preinstalled)'",
+      "  if ls \"$TOOLCHAIN_DIR\"/MetalToolchain-*.exportedBundle >/dev/null 2>&1; then",
+      "    xcodebuild -importComponent metalToolchain -importPath \"$TOOLCHAIN_DIR\"/MetalToolchain-*.exportedBundle || xcodebuild -importComponent MetalToolchain -importPath \"$TOOLCHAIN_DIR\"/MetalToolchain-*.exportedBundle || echo 'Metal toolchain import failed'",
+      "  fi",
+      "fi",
+      "xcodebuild -runFirstLaunch || true",
+      "defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES",
+      "defaults write com.apple.dt.Xcode IDEPackageSupportUseBuiltinSCM YES || true",
+    ]
+  }
+
+  // mise + the iOS toolchain pinned in atlas-ios/mise.toml. jdx/mise-action runs
+  // `mise install` on every job; pre-populating ~/.local/share/mise makes it a
+  // cache hit. Versions kept in sync with atlas-ios/mise.toml [tools]; both iOS
+  // repos re-pin tuist via their own mise.toml, so a drift just triggers a
+  // harmless re-fetch at job time rather than a failure.
+  provisioner "shell" {
+    inline = [
+      "source ~/.zprofile || true",
+      "curl https://mise.run | sh",
+      "MISE=\"$HOME/.local/bin/mise\"",
+      "$MISE use -g tuist@4.152.0",
+      "$MISE use -g swiftlint@0.63.3",
+      "$MISE use -g swiftformat@0.60.1",
+      "$MISE use -g uv@0.8.14",
+      "$MISE use -g aqua:firebase/firebase-tools@latest",
+      "$MISE use -g github:cpisciotta/xcbeautify@latest",
+      "$MISE use -g github:peripheryapp/periphery@3.7.4",
+      "$MISE install",
+      "$MISE reshim",
+      // Put mise's shims on PATH via a plain export (valid in sh and zsh, so
+      // re-sourcing ~/.zprofile in later provisioners can't break). Avoid
+      // `mise activate zsh`, which emits zsh-only syntax (autoload) that errors
+      // when ~/.zprofile is sourced under Packer's /bin/sh.
+      "grep -q 'mise/shims' ~/.zprofile || echo 'export PATH=\"$HOME/.local/share/mise/shims:$PATH\"' >> ~/.zprofile",
+    ]
+  }
+
+  // E2E (Maestro) dependencies, used by atlas-ios e2e-nightly.yml.
+  // Temurin 21 (setup-java@v4 java-version 21) + the Maestro CLI into ~/.maestro.
+  provisioner "shell" {
+    inline = [
+      "source ~/.zprofile || true",
+      "$HOME/.local/bin/mise use -g java@temurin-21",
+      "$HOME/.local/bin/mise install",
+      "curl -Ls https://get.maestro.mobile.dev | bash",
+      "grep -q '.maestro/bin' ~/.zprofile || echo 'export PATH=\"$HOME/.maestro/bin:$PATH\"' >> ~/.zprofile",
     ]
   }
 }
