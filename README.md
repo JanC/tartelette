@@ -24,22 +24,10 @@ See [Setup](docs/setup.md) for `.env` details and auth options,
 
 ## How it works
 
-Each loop iteration:
-
-1. Check drain sentinel — exit cleanly if `mise run runners:drain` was called
-2. Mint a registration token (GitHub App or PAT)
-3. `tart clone <image> runner_<name>_<id>`
-4. `tart set` — apply `VM_RAM` / `VM_CPU` from `.env`
-5. `tart run --no-graphics` in the background
-6. Poll `tart ip` until a valid IP appears; clear stale SSH known-host entry
-7. Poll SSH until the guest is responsive
-8. SSH: `config.sh --ephemeral --name … --labels …`
-9. SSH: `run.sh` — blocks until the job finishes
-10. `tart stop` + `tart delete`; loop back to 1
-
-`runner.log` records every step in logfmt (`ts=`, `level=`, `runner=`,
-`run_id=`, `msg=`). Ctrl-C once waits for the current job and de-registers;
-Ctrl-C twice within 3 s force-kills immediately.
+The host loop clones a fresh VM from the guest image, registers it with GitHub
+as an ephemeral runner, waits for a job to run, then destroys the VM — one VM
+per job, every time. See [Running](docs/running.md) for parallel runners,
+graceful shutdown, and log format.
 
 ## Tasks
 
