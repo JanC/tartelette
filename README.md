@@ -1,7 +1,6 @@
 # tart-ci
 
-Ephemeral macOS GitHub Actions runners on Apple Silicon, built on
-[ekiden](https://github.com/mirego/ekiden).
+Ephemeral macOS GitHub Actions runners on Apple Silicon.
 
 Each CI job runs in a fresh [Tart](https://tart.run) VM cloned from a custom
 macOS + Xcode image (built with Packer). The VM registers as an **ephemeral**
@@ -19,44 +18,21 @@ no registry, no push, no pull. A local OCI registry is only needed when the
 orchestrator runs on a different host than the one that built the image — see
 [Multi-host: consume a registry image](#multi-host-consume-a-registry-image).
 
-## How this relates to ekiden
-
-ekiden is vendored **unmodified** as a git submodule at `vendor/ekiden`, pinned
-at commit [`198d918`](https://github.com/mirego/ekiden/commit/198d9180f4a2c9d1ef8db16c24acae9f56850a80).
-Everything else here is a thin overlay:
-
-| Path | Purpose |
-|------|---------|
-| `guest/atlas-app.pkr.hcl` | our Packer template — replaces ekiden's `guest/*.pkr.hcl` |
-| `.env.example` | config for ekiden's host loop, using **ekiden's own variable names** |
-| `mise.toml` | pins host tools (tart, packer, jq) and registers the task runner |
-| `mise/tasks/` | all repo scripting, run via `mise run <task>` (see [Tasks](#tasks)) |
-| `registry/docker-compose.yml` | optional local `registry:2`, only for the multi-host flow |
-
-The **host run-loop is ekiden's** (`vendor/ekiden/host/launch.sh`) — we don't
-fork it. It reads its config from a `.env` in the working directory and needs no
-arguments. The only reason we don't use ekiden's `guest/` templates is that they
-build a base OS from an IPSW (user `runner`, plus Homebrew/asdf/Android), whereas
-we base directly on the prebuilt cirruslabs Xcode image (user `admin`).
-
 ## Prerequisites
 
 ```sh
-brew install mise                        # task runner + pins tart/packer/jq
-brew install hudochenkov/sshpass/sshpass # ekiden shells into the VM via sshpass (no mise backend)
+brew install mise                        # task runner + pins tart/packer/jq/python
+brew install hudochenkov/sshpass/sshpass # runner shells into the VM via sshpass (no mise backend)
 ```
 
-`tart`, `packer`, and `jq` are pinned in `mise.toml` — `mise install` (below)
-provides them, so only `sshpass` needs Homebrew.
+`tart`, `packer`, `jq`, and `python` are pinned in `mise.toml` — `mise install`
+(below) provides them, so only `sshpass` needs Homebrew.
 
 ```sh
-git clone --recurse-submodules <this-repo>
-# already cloned without --recurse-submodules?
-git submodule update --init
-
+git clone <this-repo>
 cd tart-ci
 mise trust        # approve this repo's mise.toml + tasks
-mise install      # install the pinned tart/packer/jq
+mise install      # install the pinned tart/packer/jq/python
 ```
 
 ## Tasks
@@ -67,8 +43,9 @@ All repo scripting runs through mise (`mise tasks` to list):
 |------|------|
 | `mise run vm:build [--xcode <tag>]` | build the guest image with Packer |
 | `mise run vm:copy <dest> <vm> [--dest-store <path>]` | rsync a built image to an ssh host or local path (no registry) |
-| `mise run runners:start` | start a single ekiden host loop |
+| `mise run runners:start` | start a single host loop (one VM per job) |
 | `mise run runners:parallel [N]` | run N host loops in parallel (default 2) |
+| `mise run runners:drain` | signal loops to stop after their current job |
 | `mise run runners:install-daemon [N]` | install a LaunchDaemon that runs `runners:parallel` at boot |
 | `mise run runners:uninstall-daemon` | stop and remove that LaunchDaemon |
 | `mise run runners:clean [--offline-only]` | deregister orphan runners on GitHub |
@@ -89,7 +66,7 @@ Required for both flows. Run on whichever Mac will produce the image
 
 Tart defaults to `~/.tart`. Point `TART_HOME` somewhere else (e.g. an external
 NVMe) if you want and export it in every shell that runs `tart` / `packer` /
-`launch.sh`. The host loop also picks it up from `.env`, so the cleanest
+`host/runner.py`. The host loop also picks it up from `.env`, so the cleanest
 setup is to put `TART_HOME=/path/to/store` in `.env` and forget about it.
 
 ### Build the guest image
@@ -145,7 +122,7 @@ regardless — smbfs can't punch holes; use ssh mode for a compact copy.
 
 When the orchestrator runs somewhere other than the build host — for example,
 building on a beefy Mac Studio and running jobs on a fleet of Mac minis — a
-registry transports the image; ekiden pulls it on first use and caches locally.
+registry transports the image; the runner pre-caches it on first use.
 The consuming side (pre-pull + config) lives under
 [Multi-host: consume a registry image](#multi-host-consume-a-registry-image).
 
@@ -169,7 +146,7 @@ Re-push after every rebuild.
 ## Running the orchestrator
 
 ```sh
-cp .env.example .env          # set GITHUB_API_TOKEN + REGISTRY_IMAGE_NAME=atlas-app-ci-26.3
+cp .env.example .env          # fill auth fields + set REGISTRY_IMAGE_NAME=atlas-app-ci-26.3
 mise run runners:start        # one ephemeral runner (single-machine default)
 mise run runners:parallel 2   # or N runners in parallel
 ```
@@ -181,24 +158,18 @@ cp .env.example .env
 ```
 
 Edit `.env`:
-- `GITHUB_API_TOKEN` — fine-grained PAT with `Administration: Read & write` on the target repo.
+- `GITHUB_AUTH_METHOD=app` — recommended. Set `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_OWNER`.
+- `GITHUB_AUTH_METHOD=token` — PAT fallback. Set `GITHUB_API_TOKEN` with `Administration: Read & write` on the target repo.
 - `REGISTRY_URL=` — leave empty for the single-machine flow.
 - `REGISTRY_IMAGE_NAME=atlas-app-ci-26.3` — the VM name from `tart list` (matches the Xcode tag you built).
 - `TART_HOME=` — set if you used a custom Tart store while building.
 
-`.env` is read by ekiden via `xargs`, which treats quote characters as
-delimiters even inside comments. **No `'` or `"` anywhere in the file**
-(including comments) — otherwise the loader silently fails to set any
-variable and the loop dies with `Target image not found`.
-
 ### Single-machine flow
 
-What you want when the same Mac builds the image and runs the jobs. ekiden's
-loop checks `tart list` for a local VM matching `REGISTRY_PATH` and only pulls
-when it isn't there ([launch.sh:165-179](vendor/ekiden/host/launch.sh#L165-L179)).
-With `REGISTRY_URL=` empty, `REGISTRY_PATH` collapses to the bare
-`REGISTRY_IMAGE_NAME` and the loop clones directly from the Packer-built VM —
-no push, no pull, no registry.
+What you want when the same Mac builds the image and runs the jobs. With
+`REGISTRY_URL=` empty, `REGISTRY_IMAGE_NAME` is used as a bare Tart VM name and
+the loop clones directly from the Packer-built VM — no push, no pull, no
+registry.
 
 **1. Add the workflow.** Commit a workflow to the target repo whose
 `runs-on` carries the labels we register (`self-hosted, macos, arm64, tart` —
@@ -213,8 +184,8 @@ mise run runners:start
 ```
 
 It mints a registration token → clones+boots a VM → registers an ephemeral
-runner → waits for a job. One VM per job; Ctrl-C deletes the current VM
-and exits.
+runner → waits for a job. One VM per job. `runner.log` records all events in
+logfmt (`ts=`, `level=`, `runner=`, `run_id=`, `msg=`).
 
 **3. Trigger and watch.** Push to the target repo (or use **Run workflow** if
 you added `workflow_dispatch`).
@@ -225,23 +196,38 @@ you added `workflow_dispatch`).
 
 ### Running multiple runners in parallel
 
-`launch.sh` is a single serial loop (one VM at a time). For N concurrent
-runners, run N copies. Each needs a unique `RUNNER_NAME`, otherwise
-`config.sh --replace` makes them kick each other off in GitHub:
+`runner.py` handles N concurrent loops in-process via threads. Each gets a
+unique runner name (`{RUNNER_NAME}-1`, `{RUNNER_NAME}-2`, …) — no risk of
+runners kicking each other off GitHub:
 
 ```sh
 mise run runners:parallel 2   # spawns runner-1, runner-2
-# Ctrl-C stops everything and cleans .runners/
+# Ctrl-C once: wait for current jobs, de-register, exit
+# Ctrl-C twice within 3s: force-kill immediately
 ```
 
-Each runner gets its own workdir under `.runners/runner-N` with a per-runner
-`.env` (the task rewrites `RUNNER_NAME` because ekiden reloads `.env` every
-iteration and would otherwise clobber any env-var override). Stdout is
-prefixed per runner; per-runner logs land at `.runners/runner-N/runner.log`.
+All runners write to a single `runner.log`; use `runner=` to filter in
+LogQL (`{job="runner"} | logfmt | runner="myhost-1"`).
 
 Sizing: each VM consumes `VM_RAM` + `VM_CPU` from `.env`. N × those must fit
 the host. Disk is CoW from the base image, so growth is mostly the per-job
-delta.
+delta. Apple's Virtualization framework caps macOS guests at 2 concurrent VMs.
+
+### Draining runners
+
+To stop runners cleanly without interrupting a live job:
+
+```sh
+mise run runners:drain        # write sentinel — each runner exits after current job
+mise run runners:clean        # remove sentinel + deregister any orphans
+```
+
+### Shutdown behaviour
+
+- **Ctrl-C once** (or `SIGTERM` from launchctl): graceful — waits for the
+  current job to finish, de-registers, deletes the VM, then exits.
+- **Ctrl-C twice within 3 s**: force — kills the VM immediately without
+  de-registering.
 
 ### Run at boot (LaunchDaemon)
 
@@ -258,10 +244,8 @@ live values (the `mise` binary, this repo as `WorkingDirectory`, the current
 user) and drives `mise run runners:parallel N`. `RunAtLoad` starts it at boot
 and `KeepAlive` restarts the supervisor if it dies. It runs as the current
 user, so enable **auto-login** on the host — macOS guests need an active user
-session (see the energy/login settings in `vendor/ekiden/host/README.md`).
-Combined output goes to `daemon.log`; per-runner logs stay under
-`.runners/runner-N/runner.log`. Inspect with
-`sudo launchctl print system/com.atlas.tart-ci.runners`.
+session. Combined output goes to `runner.log` in the repo root.
+Inspect with `sudo launchctl print system/com.atlas.tart-ci.runners`.
 
 ### Cleaning up orphan runners
 
@@ -287,17 +271,10 @@ mise run vm:clean -y     # skip the prompt
 For the orchestrator running on a different host than the build Mac, after the
 image has been [shipped via a registry](#ship-via-a-registry-multi-host).
 
-#### Why a workaround is needed
-
-ekiden's `launch.sh` pulls with `tart pull` and **no `--insecure` flag**, and
-Tart treats anything without `--insecure` as HTTPS (localhost is *not*
-special-cased). A plain-HTTP registry therefore can't be pulled by the loop
-as written, and we don't fork the submodule.
-
-`launch.sh` only pulls **when the image isn't already cached locally**. So
-we **pre-pull once with `--insecure`** on each host; the loop then finds it
-cached and skips its own pull entirely. Re-run the pre-pull after every
-rebuild + push.
+`tart clone <registry>/<image>` only pulls when the image isn't already cached
+locally. Pre-pull once with `--insecure` on each orchestrator host (Tart treats
+anything without `--insecure` as HTTPS; localhost is not special-cased). The
+loop then finds it cached and skips its own pull. Re-run after every rebuild + push.
 
 #### Steps
 
@@ -318,25 +295,23 @@ rebuild + push.
 
 ## Troubleshooting
 
-**`Target image not found` immediately on start** — `.env` failed to load.
-Almost always a stray quote or apostrophe in the file (xargs treats them as
-delimiters and bails). Strip them all, even from comments.
-
 **VM never gets an IP** — `tart ip <name>` hangs forever. The VM failed to
 boot or networking didn't come up. Run once with graphics to watch:
 `tart run atlas-app-ci-26.3`. Confirm the image actually booted during the build.
 
-**SSH never reachable** — loop stuck at "Waiting for SSH". Almost always a
+**SSH never reachable** — loop stuck at "waiting for SSH". Almost always a
 user/password mismatch: cirruslabs images use `admin/admin`; ensure
 `VM_USERNAME=admin` / `VM_PASSWORD=admin` in `.env`. Also confirm `sshpass`
 is installed (`which sshpass`).
 
 **`Invalid configuration provided for token`** — the registration token is
-empty or wrong. PAT lacks `Administration: Read & write`, is expired, or
-`GITHUB_REGISTRATION_ENDPOINT` points at the wrong repo. Test by hand:
+empty or wrong. For `GITHUB_AUTH_METHOD=token`: PAT lacks `Administration: Read & write`
+or is expired. For `GITHUB_AUTH_METHOD=app`: check `GITHUB_APP_ID`,
+`GITHUB_APP_PRIVATE_KEY_PATH`, and that the App is installed on `GITHUB_OWNER`.
+Test the PAT path by hand:
 ```sh
 curl -s -XPOST -H "Authorization: bearer $GITHUB_API_TOKEN" \
-  https://api.github.com/repos/<owner>/<repo>/actions/runners/registration-token
+  https://api.github.com/orgs/<owner>/actions/runners/registration-token
 ```
 You should get a JSON `token`, not a `message`/404.
 
@@ -345,9 +320,8 @@ You should get a JSON `token`, not a `message`/404.
 `self-hosted,macos,arm64,tart`; if you change `runs-on`, keep them in sync.
 
 **Two parallel jobs but only one runs** — both runners registered with the
-same name. `RUNNER_NAME` in `.env` overrides any env-var override from a
-wrapper (ekiden reloads `.env` every iteration). Use `mise run runners:parallel`
-— it materializes a per-runner `.env` to dodge this.
+same name. Use `mise run runners:parallel` — it appends `-1`/`-2` per thread
+automatically.
 
 **`packer build`: disk size … smaller than current** — `disk_size_gb` in
 `atlas-app.pkr.hcl` is below the base image's actual size. Tart can grow,
@@ -374,5 +348,4 @@ pre-cached on that host. Re-run the pre-pull step; confirm `tart list` shows
 
 ## Not in scope (yet)
 
-Monitoring/Grafana, mounted SPM/Tuist/DerivedData caches, GitHub App auth,
-registry TLS.
+Monitoring/Grafana, mounted SPM/Tuist/DerivedData caches, registry TLS.
