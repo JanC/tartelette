@@ -1,6 +1,7 @@
 # tart-ci
 
-Ephemeral macOS GitHub Actions runners on Apple Silicon.
+Ephemeral macOS GitHub Actions runners on Apple Silicon, inspired by
+[ekiden](https://github.com/mirego/ekiden).
 
 Each CI job runs in a fresh [Tart](https://tart.run) VM cloned from a custom
 macOS + Xcode image. The VM registers as an **ephemeral** runner, runs exactly
