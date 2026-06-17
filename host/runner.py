@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -116,3 +118,49 @@ class Config:
         if self.tart_home:
             env["TART_HOME"] = self.tart_home
         return env
+
+
+class LogfmtFormatter(logging.Formatter):
+    _LEVEL_MAP = {
+        logging.DEBUG: "debug",
+        logging.INFO: "info",
+        logging.WARNING: "warn",
+        logging.ERROR: "error",
+        logging.CRITICAL: "critical",
+    }
+
+    def format(self, record: logging.LogRecord) -> str:
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(record.created))
+        level = self._LEVEL_MAP.get(record.levelno, record.levelname.lower())
+        runner = getattr(record, "runner", "")
+        run_id = getattr(record, "run_id", "")
+        msg = record.getMessage()
+        if " " in msg or '"' in msg:
+            msg = '"' + msg.replace('"', '\\"') + '"'
+
+        parts = [f"ts={ts}", f"level={level}"]
+        if runner:
+            parts.append(f"runner={runner}")
+        if run_id:
+            parts.append(f"run_id={run_id}")
+        parts.append(f"msg={msg}")
+        return " ".join(parts)
+
+
+def setup_logging(log_file: Path, runner_name: str) -> logging.Logger:
+    """Return a logger that writes logfmt to stdout and log_file simultaneously."""
+    logger = logging.getLogger(runner_name)
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+
+    fmt = LogfmtFormatter()
+
+    stdout_handler = logging.StreamHandler()
+    stdout_handler.setFormatter(fmt)
+
+    file_handler = logging.FileHandler(log_file, mode="a")
+    file_handler.setFormatter(fmt)
+
+    logger.addHandler(stdout_handler)
+    logger.addHandler(file_handler)
+    return logger
