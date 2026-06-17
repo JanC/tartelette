@@ -67,6 +67,8 @@ All repo scripting runs through mise (`mise tasks` to list):
 | `mise run vm:copy <dest> <vm> [--dest-store <path>]` | rsync a built image to an ssh host or local path (no registry) |
 | `mise run runners:start` | start a single ekiden host loop |
 | `mise run runners:parallel [N]` | run N host loops in parallel (default 2) |
+| `mise run runners:install-daemon [N]` | install a LaunchDaemon that runs `runners:parallel` at boot |
+| `mise run runners:uninstall-daemon` | stop and remove that LaunchDaemon |
 | `mise run runners:clean [--offline-only]` | deregister orphan runners on GitHub |
 | `mise run vm:clean [-y] [PREFIX]` | delete dead job-VM clones from the local Tart store |
 
@@ -167,6 +169,26 @@ prefixed per runner; per-runner logs land at `.runners/runner-N/runner.log`.
 Sizing: each VM consumes `VM_RAM` + `VM_CPU` from `.env`. N × those must fit
 the host. Disk is CoW from the base image, so growth is mostly the per-job
 delta.
+
+## Run at boot (LaunchDaemon)
+
+To make a dedicated host start its runner loops automatically, install a
+LaunchDaemon instead of leaving `runners:parallel` in a terminal:
+
+```sh
+mise run runners:install-daemon 2   # render plist, load it (asks for sudo)
+mise run runners:uninstall-daemon   # stop and remove it
+```
+
+The task renders `/Library/LaunchDaemons/com.atlas.tart-ci.runners.plist` from
+live values (the `mise` binary, this repo as `WorkingDirectory`, the current
+user) and drives `mise run runners:parallel N`. `RunAtLoad` starts it at boot
+and `KeepAlive` restarts the supervisor if it dies. It runs as the current
+user, so enable **auto-login** on the host — macOS guests need an active user
+session (see the energy/login settings in `vendor/ekiden/host/README.md`).
+Combined output goes to `daemon.log`; per-runner logs stay under
+`.runners/runner-N/runner.log`. Inspect with
+`sudo launchctl print system/com.atlas.tart-ci.runners`.
 
 ## Cleaning up orphan runners
 
