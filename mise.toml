@@ -7,3 +7,4 @@
 "aqua:cirruslabs/tart" = "2.32.1"
 packer = "1.15.4"
 jq = "1.8.1"
+python = "3.10"

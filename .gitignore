@@ -7,3 +7,7 @@ runner.log
 # Packer
 guest/.packer.d/
 crash.log
+
+# Python/pytest
+__pycache__/
+.pytest_cache/
