@@ -201,8 +201,11 @@ def _wait_for_ip(
     log: logging.Logger,
     run_id: str,
     shutdown: threading.Event,
+    tart_proc: subprocess.Popen | None = None,
 ) -> str:
     while not shutdown.is_set():
+        if tart_proc is not None and tart_proc.poll() is not None:
+            raise RuntimeError(f"tart run exited unexpectedly (code {tart_proc.returncode})")
         result = _tart(["ip", instance], config, capture_output=True)
         ip = result.stdout.decode().strip()
         if re.match(r"^(\d+\.){3}\d+$", ip):
@@ -255,14 +258,14 @@ def run_once(
         )
 
         log.info("booting VM", extra={"run_id": run_id, "runner": runner_name})
-        subprocess.Popen(
+        tart_proc = subprocess.Popen(
             ["tart", "run", "--no-graphics", instance],
             env=config.tart_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
 
-        ip = _wait_for_ip(instance, config, log, run_id, shutdown)
+        ip = _wait_for_ip(instance, config, log, run_id, shutdown, tart_proc)
         if shutdown.is_set():
             return
 
@@ -271,15 +274,20 @@ def run_once(
             return
 
         log.info("configuring runner", extra={"run_id": run_id, "runner": runner_name})
-        _ssh(ip, config, (
-            f"./actions-runner/config.sh "
-            f"--url {config.runner_url} "
-            f"--token {token} "
-            f"--ephemeral "
-            f"--name {runner_name} "
-            f"--labels {config.runner_labels} "
-            f"--unattended --replace"
-        ))
+        # Write token to a temp file to avoid exposing it in the process list
+        _ssh(ip, config, f"printf '%s' '{token}' > /tmp/.runner_token && chmod 600 /tmp/.runner_token")
+        try:
+            _ssh(ip, config, (
+                f"./actions-runner/config.sh "
+                f"--url {config.runner_url} "
+                f'--token "$(cat /tmp/.runner_token)" '
+                f"--ephemeral "
+                f"--name {runner_name} "
+                f"--labels {config.runner_labels} "
+                f"--unattended --replace"
+            ))
+        finally:
+            _ssh(ip, config, "rm -f /tmp/.runner_token", check=False)
 
         log.info("starting runner", extra={"run_id": run_id, "runner": runner_name})
         _ssh(ip, config, "source ~/.zprofile && ./actions-runner/run.sh")
