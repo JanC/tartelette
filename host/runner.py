@@ -5,7 +5,11 @@ from __future__ import annotations
 import dataclasses
 import logging
 import os
+import re
+import subprocess
+import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -168,3 +172,130 @@ def setup_logging(log_file: Path, runner_name: str) -> logging.Logger:
 
 def is_drain_set(drain_path: Path) -> bool:
     return drain_path.exists()
+
+
+def _tart(args: list, config: Config, **kwargs) -> subprocess.CompletedProcess:
+    """Run a tart subcommand, injecting TART_HOME if configured."""
+    return subprocess.run(["tart"] + args, env=config.tart_env, **kwargs)
+
+
+def _ssh(ip: str, config: Config, command: str, check: bool = True) -> subprocess.CompletedProcess:
+    """Run a command on the guest VM over SSH using sshpass."""
+    return subprocess.run(
+        [
+            "sshpass", "-e", "ssh", "-q",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=5",
+            f"{config.vm_username}@{ip}",
+            command,
+        ],
+        env={**os.environ, "SSHPASS": config.vm_password},
+        capture_output=True,
+        check=check,
+    )
+
+
+def _wait_for_ip(
+    instance: str,
+    config: Config,
+    log: logging.Logger,
+    run_id: str,
+    shutdown: threading.Event,
+) -> str:
+    while not shutdown.is_set():
+        result = _tart(["ip", instance], config, capture_output=True)
+        ip = result.stdout.decode().strip()
+        if re.match(r"^(\d+\.){3}\d+$", ip):
+            log.info("IP acquired", extra={"run_id": run_id, "runner": log.name})
+            subprocess.run(["ssh-keygen", "-R", ip], capture_output=True)
+            return ip
+        shutdown.wait(timeout=1)
+    return ""
+
+
+def _wait_for_ssh(
+    ip: str,
+    config: Config,
+    log: logging.Logger,
+    run_id: str,
+    shutdown: threading.Event,
+) -> None:
+    log.info("waiting for SSH", extra={"run_id": run_id, "runner": log.name})
+    while not shutdown.is_set():
+        result = _ssh(ip, config, "true", check=False)
+        if result.returncode == 0:
+            log.info("SSH ready", extra={"run_id": run_id, "runner": log.name})
+            return
+        shutdown.wait(timeout=1)
+
+
+def run_once(
+    config: Config,
+    runner_name: str,
+    log: logging.Logger,
+    shutdown: threading.Event,
+    force_shutdown: threading.Event,
+) -> None:
+    """Execute one complete runner lifecycle: clone → boot → job → teardown."""
+    from host.gh_token import fetch_token
+
+    run_id = uuid.uuid4().hex[:8]
+    instance = f"runner_{runner_name}_{run_id}"
+
+    log.info("fetching registration token", extra={"run_id": run_id, "runner": runner_name})
+    token = fetch_token(config.as_gh_token_config(), kind="registration")
+
+    log.info("cloning VM", extra={"run_id": run_id, "runner": runner_name})
+    _tart(["clone", config.registry_path, instance], config, check=True)
+
+    try:
+        _tart(
+            ["set", instance, "--memory", str(config.vm_ram), "--cpu", str(config.vm_cpu)],
+            config, check=True,
+        )
+
+        log.info("booting VM", extra={"run_id": run_id, "runner": runner_name})
+        subprocess.Popen(
+            ["tart", "run", "--no-graphics", instance],
+            env=config.tart_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        ip = _wait_for_ip(instance, config, log, run_id, shutdown)
+        if shutdown.is_set():
+            return
+
+        _wait_for_ssh(ip, config, log, run_id, shutdown)
+        if shutdown.is_set():
+            return
+
+        log.info("configuring runner", extra={"run_id": run_id, "runner": runner_name})
+        _ssh(ip, config, (
+            f"./actions-runner/config.sh "
+            f"--url {config.runner_url} "
+            f"--token {token} "
+            f"--ephemeral "
+            f"--name {runner_name} "
+            f"--labels {config.runner_labels} "
+            f"--unattended --replace"
+        ))
+
+        log.info("starting runner", extra={"run_id": run_id, "runner": runner_name})
+        _ssh(ip, config, "source ~/.zprofile && ./actions-runner/run.sh")
+        log.info("job complete", extra={"run_id": run_id, "runner": runner_name})
+
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode(errors="replace").strip() if e.stderr else ""
+        log.error(
+            f"subprocess failed: {' '.join(e.cmd)}" + (f" — {stderr}" if stderr else ""),
+            extra={"run_id": run_id, "runner": runner_name},
+        )
+        raise
+
+    finally:
+        if not force_shutdown.is_set():
+            log.info("stopping VM", extra={"run_id": run_id, "runner": runner_name})
+            _tart(["stop", instance], config, capture_output=True)
+        log.info("deleting VM", extra={"run_id": run_id, "runner": runner_name})
+        _tart(["delete", instance], config, capture_output=True)
