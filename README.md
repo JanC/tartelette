@@ -18,9 +18,10 @@ cp .env.example .env && $EDITOR .env  # fill auth + image name
 mise run runners:start                # start the runner loop
 ```
 
-See [Setup](docs/setup.md) for `.env` details and auth options,
-[Building](docs/building.md) for image variants and multi-host distribution,
-[Running](docs/running.md) for parallel runners, drain, and the LaunchDaemon.
+- [Setup](docs/setup.md) — prerequisites, `.env` config, auth options
+- [Building](docs/building.md) — image variants, multi-host distribution
+- [Running](docs/running.md) — parallel runners, drain, LaunchDaemon, observability
+- [Troubleshooting](docs/troubleshooting.md)
 
 ## How it works
 
