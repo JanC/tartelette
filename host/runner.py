@@ -2,11 +2,14 @@
 """Tart CI runner — replaces vendor/ekiden/host/launch.sh."""
 from __future__ import annotations
 
+import argparse
 import dataclasses
 import logging
 import os
 import re
+import signal
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -307,3 +310,128 @@ def run_once(
             _tart(["stop", instance], config, capture_output=True)
         log.info("deleting VM", extra={"run_id": run_id, "runner": runner_name})
         _tart(["delete", instance], config, capture_output=True)
+
+
+def parse_args(argv: list | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Tart CI runner host loop")
+    parser.add_argument(
+        "--parallel",
+        type=int,
+        default=1,
+        metavar="N",
+        help="number of concurrent runner loops (default 1, macOS caps macOS VMs at 2)",
+    )
+    parser.add_argument("--env", default=".env", help="path to .env file (default .env)")
+    parser.add_argument("--log", default="runner.log", help="log file path (default runner.log)")
+
+    args = parser.parse_args(argv)
+    if args.parallel < 1:
+        parser.error(f"--parallel must be >= 1, got {args.parallel}")
+    return args
+
+
+def run_loop(
+    config: Config,
+    runner_name: str,
+    log: logging.Logger,
+    drain_path: Path,
+    shutdown: threading.Event,
+    force_shutdown: threading.Event,
+) -> None:
+    log.info("loop starting", extra={"runner": runner_name})
+    while not shutdown.is_set():
+        if is_drain_set(drain_path):
+            log.info("drain sentinel found, exiting loop", extra={"runner": runner_name})
+            return
+        try:
+            run_once(config, runner_name, log, shutdown, force_shutdown)
+        except Exception:
+            if force_shutdown.is_set():
+                return
+            if not shutdown.is_set():
+                log.error("run_once failed, retrying after 5s", extra={"runner": runner_name})
+                shutdown.wait(timeout=5)
+    log.info("loop exited", extra={"runner": runner_name})
+
+
+def main() -> None:
+    args = parse_args()
+
+    root = Path(os.environ.get("MISE_PROJECT_ROOT", "."))
+    env_path = Path(args.env) if os.path.isabs(args.env) else root / args.env
+    log_path = Path(args.log) if os.path.isabs(args.log) else root / args.log
+    drain_path = root / ".runners" / "drain"
+
+    if not env_path.exists():
+        print(f"error: {env_path} not found", file=sys.stderr)
+        sys.exit(1)
+
+    env = load_env(env_path)
+    config = Config.from_env(env)
+
+    if args.parallel > 2:
+        print(
+            f"[runner] warning: macOS allows at most 2 concurrent macOS VMs; "
+            f"VM 3+ will fail to boot",
+            file=sys.stderr,
+        )
+
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log = setup_logging(log_path, config.runner_name)
+
+    shutdown = threading.Event()
+    force_shutdown = threading.Event()
+    _last_sigint: list[float] = []
+
+    # Define runner_names before registering signal handlers to avoid a
+    # closure race if a signal arrives before the assignment below.
+    base_name = config.runner_name
+    runner_names = (
+        [base_name]
+        if args.parallel == 1
+        else [f"{base_name}-{i}" for i in range(1, args.parallel + 1)]
+    )
+
+    def handle_signal(sig, frame):
+        now = time.time()
+        if shutdown.is_set() and _last_sigint and (now - _last_sigint[-1]) < 3:
+            for runner_name in runner_names:
+                log.warning(
+                    "force shutdown, killing VM",
+                    extra={"runner": runner_name},
+                )
+            force_shutdown.set()
+            shutdown.set()
+        else:
+            _last_sigint.append(now)
+            for runner_name in runner_names:
+                log.warning(
+                    "shutdown requested, waiting for current job to finish",
+                    extra={"runner": runner_name},
+                )
+            shutdown.set()
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+    threads = [
+        threading.Thread(
+            target=run_loop,
+            args=(config, name, log, drain_path, shutdown, force_shutdown),
+            name=name,
+            daemon=True,
+        )
+        for name in runner_names
+    ]
+
+    for t in threads:
+        t.start()
+
+    for t in threads:
+        t.join()
+
+    log.info("all runners stopped", extra={"runner": base_name})
+
+
+if __name__ == "__main__":
+    main()
