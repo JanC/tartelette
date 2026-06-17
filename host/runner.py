@@ -164,3 +164,7 @@ def setup_logging(log_file: Path, runner_name: str) -> logging.Logger:
     logger.addHandler(stdout_handler)
     logger.addHandler(file_handler)
     return logger
+
+
+def is_drain_set(drain_path: Path) -> bool:
+    return drain_path.exists()

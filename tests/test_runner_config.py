@@ -2,7 +2,7 @@ import sys, os, textwrap
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from pathlib import Path
 import pytest
-from host.runner import load_env, Config
+from host.runner import load_env, Config, is_drain_set
 
 
 def write_env(tmp_path: Path, content: str) -> Path:
@@ -98,3 +98,13 @@ def test_config_app_auth_missing_key_raises():
             "VM_USERNAME": "admin",
             "VM_PASSWORD": "admin",
         })
+
+
+def test_drain_false_when_no_sentinel(tmp_path):
+    assert is_drain_set(tmp_path / "drain") is False
+
+
+def test_drain_true_when_sentinel_exists(tmp_path):
+    sentinel = tmp_path / "drain"
+    sentinel.touch()
+    assert is_drain_set(sentinel) is True
