@@ -70,6 +70,26 @@ supervisor if it crashes. Output goes to `runner.log` in the repo root.
 sudo launchctl print system/com.atlas.tart-ci.runners    # check status
 ```
 
+### Stopping cleanly
+
+`runners:daemon:uninstall` (and `:stop`) send SIGTERM, which the host loop
+handles **gracefully** — it finishes the in-flight job, then tears down the VM
+and deregisters from GitHub. But launchd only waits ~20s before escalating to
+SIGKILL, so if a CI job is mid-run (usually minutes) the supervisor is
+hard-killed first, leaving an orphan `runner_*` VM and a stale GitHub
+registration.
+
+To stop a busy host without orphans, **drain first**:
+
+```sh
+mise run runners:drain               # finish current job, then exit (no respawn)
+# wait for jobs to finish (watch: mise run runners:daemon:logs)
+mise run runners:daemon:uninstall    # now safe to remove
+```
+
+If you did kill it mid-job, clean up the leftovers with `runners:clean`
+(GitHub side) and `vm:clean` (Tart side) — see below.
+
 ## Cleaning up orphans
 
 Killing the loop mid-listen leaves runners registered (offline) in GitHub for
