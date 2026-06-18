@@ -238,20 +238,35 @@ def _tart(args: list, config: Config, **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(["tart"] + args, env=config.tart_env, **kwargs)
 
 
-def _ssh(ip: str, config: Config, command: str, check: bool = True) -> subprocess.CompletedProcess:
-    """Run a command on the guest VM over SSH using sshpass."""
-    return subprocess.run(
-        [
-            "sshpass", "-e", "ssh", "-q",
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "ConnectTimeout=5",
-            f"{config.vm_username}@{ip}",
-            command,
-        ],
-        env={**os.environ, "SSHPASS": config.vm_password},
-        capture_output=True,
-        check=check,
-    )
+def _ssh(
+    ip: str, config: Config, command: str, check: bool = True, retries: int = 3
+) -> subprocess.CompletedProcess:
+    """Run a command on the guest VM over SSH using sshpass. Retries transient
+    connection failures (ssh exit 255) — sshd is often briefly flaky right after
+    boot. A non-255 exit is the remote command's own code and is not retried.
+    Uses LogLevel=ERROR (not -q) so real failures land in stderr for logging."""
+    result = None
+    for attempt in range(retries):
+        result = subprocess.run(
+            [
+                "sshpass", "-e", "ssh",
+                "-o", "LogLevel=ERROR",
+                "-o", "StrictHostKeyChecking=no",
+                "-o", "ConnectTimeout=5",
+                f"{config.vm_username}@{ip}",
+                command,
+            ],
+            env={**os.environ, "SSHPASS": config.vm_password},
+            capture_output=True,
+        )
+        if result.returncode != 255 or attempt == retries - 1:
+            break
+        time.sleep(2)
+    if check and result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode, result.args, result.stdout, result.stderr
+        )
+    return result
 
 
 def _ssh_stream(
@@ -267,7 +282,8 @@ def _ssh_stream(
     Raises CalledProcessError on non-zero exit."""
     proc = subprocess.Popen(
         [
-            "sshpass", "-e", "ssh", "-q",
+            "sshpass", "-e", "ssh",
+            "-o", "LogLevel=ERROR",
             "-o", "StrictHostKeyChecking=no",
             "-o", "ConnectTimeout=5",
             f"{config.vm_username}@{ip}",
@@ -317,7 +333,7 @@ def _wait_for_ssh(
 ) -> None:
     log.info("waiting for SSH", extra={"run_id": run_id, "runner": log.name})
     while not shutdown.is_set():
-        result = _ssh(ip, config, "true", check=False)
+        result = _ssh(ip, config, "true", check=False, retries=1)
         if result.returncode == 0:
             log.info("SSH ready", extra={"run_id": run_id, "runner": log.name})
             return
