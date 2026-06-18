@@ -163,19 +163,66 @@ class LogfmtFormatter(logging.Formatter):
         return line
 
 
+class ConsoleFormatter(logging.Formatter):
+    """Human-friendly stdout formatter: `HH:MM:SS LEVEL  runner/run_id  message`.
+    Colorizes the level when color=True; the file keeps logfmt for grepping."""
+
+    _RESET = "\033[0m"
+    _DIM = "\033[2m"
+    _LEVEL_COLOR = {
+        logging.DEBUG: "\033[2m",
+        logging.INFO: "\033[32m",
+        logging.WARNING: "\033[33m",
+        logging.ERROR: "\033[31m",
+        logging.CRITICAL: "\033[1;31m",
+    }
+    _LEVEL_LABEL = {
+        logging.DEBUG: "DEBUG",
+        logging.INFO: "INFO",
+        logging.WARNING: "WARN",
+        logging.ERROR: "ERROR",
+        logging.CRITICAL: "CRIT",
+    }
+
+    def __init__(self, color: bool = True):
+        super().__init__()
+        self.color = color
+
+    def _paint(self, text: str, code: str) -> str:
+        return f"{code}{text}{self._RESET}" if self.color and code else text
+
+    def format(self, record: logging.LogRecord) -> str:
+        t = time.strftime("%H:%M:%S", time.localtime(record.created))
+        label = self._LEVEL_LABEL.get(record.levelno, record.levelname.upper())
+        runner = getattr(record, "runner", "")
+        run_id = getattr(record, "run_id", "")
+        ctx = f"{runner}/{run_id}" if runner and run_id else (runner or run_id)
+
+        parts = [
+            self._paint(t, self._DIM),
+            self._paint(f"{label:<5}", self._LEVEL_COLOR.get(record.levelno, "")),
+        ]
+        if ctx:
+            parts.append(self._paint(ctx, self._DIM))
+        parts.append(record.getMessage())
+        line = "  ".join(parts)
+        if record.exc_info:
+            line += "\n" + self.formatException(record.exc_info)
+        return line
+
+
 def setup_logging(log_file: Path, runner_name: str) -> logging.Logger:
-    """Return a logger that writes logfmt to stdout and log_file simultaneously."""
+    """Pretty (optionally colored) output to stdout, logfmt to log_file."""
     logger = logging.getLogger(runner_name)
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
 
-    fmt = LogfmtFormatter()
-
+    color = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
     stdout_handler = logging.StreamHandler()
-    stdout_handler.setFormatter(fmt)
+    stdout_handler.setFormatter(ConsoleFormatter(color=color))
 
     file_handler = logging.FileHandler(log_file, mode="a")
-    file_handler.setFormatter(fmt)
+    file_handler.setFormatter(LogfmtFormatter())
 
     logger.addHandler(stdout_handler)
     logger.addHandler(file_handler)
