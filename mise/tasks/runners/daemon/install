@@ -9,14 +9,14 @@
 # The daemon runs as the current user, so enable auto-login on the host: macOS
 # guests need an active user session (see vendor/ekiden/host/README.md).
 #
-# Stop/remove with `mise run runners:uninstall-daemon`.
+# Stop/remove with `mise run runners:daemon:uninstall`.
 
 set -euo pipefail
 
 LABEL="com.atlas.tart-ci.runners"
 PLIST_DST="/Library/LaunchDaemons/$LABEL.plist"
 
-ROOT="${MISE_PROJECT_ROOT:?run via 'mise run runners:install-daemon'}"
+ROOT="${MISE_PROJECT_ROOT:?run via 'mise run runners:daemon:install'}"
 USER_NAME="$(id -un)"
 
 N="${usage_n:-2}"
@@ -78,8 +78,8 @@ cat > "$TMP_PLIST" <<PLIST
 </plist>
 PLIST
 
-echo "[install-daemon] rendered plist for user=$USER_NAME N=$N mise=$MISE_BIN"
-echo "[install-daemon] installing $PLIST_DST (sudo required)"
+echo "[daemon:install] rendered plist for user=$USER_NAME N=$N mise=$MISE_BIN"
+echo "[daemon:install] installing $PLIST_DST (sudo required)"
 
 sudo cp "$TMP_PLIST" "$PLIST_DST"
 sudo chown root:wheel "$PLIST_DST"
@@ -91,6 +91,6 @@ sudo launchctl bootout system "$PLIST_DST" 2>/dev/null || true
 sudo launchctl bootstrap system "$PLIST_DST"
 sudo launchctl enable "system/$LABEL"
 
-echo "[install-daemon] loaded $LABEL"
-echo "[install-daemon] logs: $ROOT/daemon.log  (per-runner logs under .runners/runner-*/runner.log)"
-echo "[install-daemon] status: sudo launchctl print system/$LABEL"
+echo "[daemon:install] loaded $LABEL"
+echo "[daemon:install] logs: $ROOT/daemon.log  (per-runner logs under .runners/runner-*/runner.log)"
+echo "[daemon:install] status: sudo launchctl print system/$LABEL"

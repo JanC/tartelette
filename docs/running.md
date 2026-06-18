@@ -52,8 +52,8 @@ mise run runners:clean
 ## Run at boot (LaunchDaemon)
 
 ```sh
-mise run runners:install-daemon 2    # renders plist, loads it (requires sudo)
-mise run runners:uninstall-daemon    # stop + remove
+mise run runners:daemon:install 2    # renders plist, loads it (requires sudo)
+mise run runners:daemon:uninstall    # stop + remove
 ```
 
 Installs `/Library/LaunchDaemons/com.atlas.tart-ci.runners.plist` configured
