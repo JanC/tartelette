@@ -74,6 +74,18 @@ volumes (e.g. a repo or `TART_HOME` on `/Volumes/...`), failing with
 `EX_CONFIG`. `install`/`uninstall` also remove any legacy system daemon from an
 earlier version.
 
+### Repo or TART_HOME on an external volume
+
+If the repo or `TART_HOME` lives on an external/secondary volume (`/Volumes/...`),
+macOS **TCC** gates background launchd items from that volume. The first time
+the agent runs, macOS prompts to let `mise` access the volume — **click Allow**
+(or grant it under System Settings → Privacy & Security → Files and Folders /
+Removable Volumes). Until then `mise` hangs silently in `getcwd()`/`open()`:
+`daemon:status` shows `state = running` with no log progress and no child
+process. A Terminal/SSH session is *not* gated this way, so it works there —
+which makes the agent-only hang confusing. After granting access, restart with
+`mise run runners:daemon:start`.
+
 **Requires auto-login** — macOS guests need an active user session on the host,
 and the agent loads at login (not at the pre-login boot phase).
 
