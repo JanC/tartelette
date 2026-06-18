@@ -20,6 +20,12 @@ PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LEGACY_DAEMON="/Library/LaunchDaemons/$LABEL.plist"
 
 ROOT="${MISE_PROJECT_ROOT:?run via 'mise run runners:daemon:install'}"
+# Log to the boot volume, not the repo: launchd opens StandardOutPath during
+# spawn setup, and it cannot open a path on an external volume (/Volumes/...) —
+# that fails the whole job with EX_CONFIG (78) and produces no log at all.
+LOG_DIR="$HOME/Library/Logs/tart-ci"
+LOG="$LOG_DIR/daemon.log"
+mkdir -p "$LOG_DIR"
 
 N="${usage_n:-2}"
 case "$N" in
@@ -62,7 +68,7 @@ cat > "$TMP_PLIST" <<PLIST
       <string>$N</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>$ROOT</string>
+    <string>$HOME</string>
     <key>EnvironmentVariables</key>
     <dict>
       <key>PATH</key>
@@ -79,9 +85,9 @@ cat > "$TMP_PLIST" <<PLIST
     <key>ThrottleInterval</key>
     <integer>30</integer>
     <key>StandardOutPath</key>
-    <string>$ROOT/daemon.log</string>
+    <string>$LOG</string>
     <key>StandardErrorPath</key>
-    <string>$ROOT/daemon.log</string>
+    <string>$LOG</string>
   </dict>
 </plist>
 PLIST
@@ -98,5 +104,5 @@ launchctl enable "$SERVICE"
 launchctl bootstrap "$DOMAIN" "$PLIST_DST"
 
 echo "[daemon:install] loaded $LABEL"
-echo "[daemon:install] logs: $ROOT/daemon.log  (per-runner logs under .runners/runner-*/runner.log)"
+echo "[daemon:install] logs: $LOG  (per-runner logs under .runners/runner-*/runner.log)"
 echo "[daemon:install] status: mise run runners:daemon:status"

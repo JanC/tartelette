@@ -63,7 +63,9 @@ mise run runners:daemon:uninstall    # stop + remove
 Installs a per-user LaunchAgent at
 `~/Library/LaunchAgents/com.atlas.tart-ci.runners.plist`, configured for the
 repo path and N runners. `KeepAlive` restarts the supervisor if it crashes.
-Output goes to `daemon.log` in the repo root.
+Output goes to `~/Library/Logs/tart-ci/daemon.log` — on the boot volume, not
+the repo, because launchd opens that path during spawn setup and cannot open a
+path on an external volume (it fails with `EX_CONFIG` and writes no log).
 
 A user **LaunchAgent** (not a system LaunchDaemon) is used deliberately: the
 host needs an active user session anyway (see below), and a system daemon runs
