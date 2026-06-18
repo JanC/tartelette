@@ -63,6 +63,8 @@ cat > "$TMP_PLIST" <<PLIST
     <key>ProgramArguments</key>
     <array>
       <string>$MISE_BIN</string>
+      <string>--cd</string>
+      <string>$ROOT</string>
       <string>run</string>
       <string>runners:parallel</string>
       <string>$N</string>
