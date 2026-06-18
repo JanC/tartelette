@@ -41,11 +41,11 @@ graceful shutdown, and log format.
 | `mise run runners:parallel [N]` | run N loops in parallel (default 2) |
 | `mise run runners:drain` | signal loops to stop after current job |
 | `mise run runners:list` | list runners registered on GitHub for this repo/org |
-| `mise run runners:daemon:install [N]` | install a LaunchDaemon that runs `runners:parallel` at boot |
-| `mise run runners:daemon:status` | show daemon state, pid, and recent log |
+| `mise run runners:daemon:install [N]` | install a per-user LaunchAgent that runs `runners:parallel` at login |
+| `mise run runners:daemon:status` | show agent state, pid, and recent log |
 | `mise run runners:daemon:logs` | follow the daemon log (`tail -f`) |
-| `mise run runners:daemon:stop` | unload + disable the daemon (keeps the plist) |
-| `mise run runners:daemon:start` | re-enable and (re)start the daemon |
-| `mise run runners:daemon:uninstall` | stop and remove the LaunchDaemon |
+| `mise run runners:daemon:stop` | unload + disable the agent (keeps the plist) |
+| `mise run runners:daemon:start` | re-enable and (re)start the agent |
+| `mise run runners:daemon:uninstall` | stop and remove the LaunchAgent |
 | `mise run runners:clean [--offline-only]` | deregister orphan runners on GitHub |
 | `mise run vm:clean [-y]` | delete dead job-VM clones from the Tart store |

@@ -1,20 +1,29 @@
 #!/usr/bin/env bash
-#MISE description="Stop and remove the runners LaunchDaemon"
-# Boots out the LaunchDaemon installed by runners:daemon:install and deletes its
+#MISE description="Stop and remove the runners LaunchAgent"
+# Boots out the LaunchAgent installed by runners:daemon:install and deletes its
 # plist. SIGTERM from launchd propagates to runners:parallel, which deletes the
 # in-flight VMs via its own trap before exiting.
 
 set -euo pipefail
 
 LABEL="com.atlas.tart-ci.runners"
-PLIST_DST="/Library/LaunchDaemons/$LABEL.plist"
+SERVICE="gui/$(id -u)/$LABEL"
+PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
+LEGACY_DAEMON="/Library/LaunchDaemons/$LABEL.plist"
+
+# Clean up any legacy system LaunchDaemon from an older install.
+if [ -f "$LEGACY_DAEMON" ]; then
+  echo "[daemon:uninstall] removing legacy system LaunchDaemon (sudo required)"
+  sudo launchctl bootout system "$LEGACY_DAEMON" 2>/dev/null || true
+  sudo rm -f "$LEGACY_DAEMON"
+fi
 
 if [ ! -f "$PLIST_DST" ]; then
   echo "[daemon:uninstall] $PLIST_DST not present; nothing to do"
   exit 0
 fi
 
-echo "[daemon:uninstall] booting out $LABEL (sudo required)"
-sudo launchctl bootout system "$PLIST_DST" 2>/dev/null || true
-sudo rm -f "$PLIST_DST"
+echo "[daemon:uninstall] booting out $LABEL"
+launchctl bootout "$SERVICE" 2>/dev/null || true
+rm -f "$PLIST_DST"
 echo "[daemon:uninstall] removed $PLIST_DST"

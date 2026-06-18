@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-#MISE description="Show status of the runners LaunchDaemon"
-# Reports whether the daemon installed by runners:daemon:install is present and
+#MISE description="Show status of the runners LaunchAgent"
+# Reports whether the agent installed by runners:daemon:install is present and
 # running (pid, last exit code, configured loop count) and tails its log.
-# Reading system-domain state needs sudo; if it's not loaded that's reported too.
 
 set -euo pipefail
 
 LABEL="com.atlas.tart-ci.runners"
-PLIST_DST="/Library/LaunchDaemons/$LABEL.plist"
+SERVICE="gui/$(id -u)/$LABEL"
+PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
 ROOT="${MISE_PROJECT_ROOT:?run via 'mise run runners:daemon:status'}"
 LOG="$ROOT/daemon.log"
 
@@ -23,7 +23,7 @@ N=$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments' "$PLIST_DST" 2>/dev/nul
   | awk '/runners:parallel/{getline; gsub(/ /,""); print; exit}')
 [ -n "${N:-}" ] && echo "[daemon:status] configured loops (N): $N"
 
-print_out="$(sudo launchctl print "system/$LABEL" 2>/dev/null || true)"
+print_out="$(launchctl print "$SERVICE" 2>/dev/null || true)"
 if [ -z "$print_out" ]; then
   echo "[daemon:status] not loaded in launchd (installed but not bootstrapped)"
 else

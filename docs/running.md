@@ -49,10 +49,10 @@ job finishes, it exits cleanly. Remove the sentinel (and deregister orphans) wit
 mise run runners:clean
 ```
 
-## Run at boot (LaunchDaemon)
+## Run at login (LaunchAgent)
 
 ```sh
-mise run runners:daemon:install 2    # renders plist, loads it (requires sudo)
+mise run runners:daemon:install 2    # renders plist, loads it (no sudo)
 mise run runners:daemon:status       # pid, last exit code, log tail
 mise run runners:daemon:logs         # follow daemon.log (tail -f)
 mise run runners:daemon:stop         # pause: unload + disable (keeps plist)
@@ -60,14 +60,23 @@ mise run runners:daemon:start        # resume: re-enable + (re)start
 mise run runners:daemon:uninstall    # stop + remove
 ```
 
-Installs `/Library/LaunchDaemons/com.atlas.tart-ci.runners.plist` configured
-for the current user, repo path, and N runners. `KeepAlive` restarts the
-supervisor if it crashes. Output goes to `runner.log` in the repo root.
+Installs a per-user LaunchAgent at
+`~/Library/LaunchAgents/com.atlas.tart-ci.runners.plist`, configured for the
+repo path and N runners. `KeepAlive` restarts the supervisor if it crashes.
+Output goes to `daemon.log` in the repo root.
 
-**Requires auto-login** — macOS guests need an active user session on the host.
+A user **LaunchAgent** (not a system LaunchDaemon) is used deliberately: the
+host needs an active user session anyway (see below), and a system daemon runs
+outside that session — it can't reach the user's environment or external
+volumes (e.g. a repo or `TART_HOME` on `/Volumes/...`), failing with
+`EX_CONFIG`. `install`/`uninstall` also remove any legacy system daemon from an
+earlier version.
+
+**Requires auto-login** — macOS guests need an active user session on the host,
+and the agent loads at login (not at the pre-login boot phase).
 
 ```sh
-sudo launchctl print system/com.atlas.tart-ci.runners    # check status
+launchctl print "gui/$(id -u)/com.atlas.tart-ci.runners"    # check status
 ```
 
 ### Stopping cleanly
