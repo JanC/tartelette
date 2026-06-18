@@ -59,7 +59,8 @@ def _gh_api(method: str, url: str, token: str) -> dict:
     )
     try:
         with urllib.request.urlopen(req) as resp:
-            return json.loads(resp.read())
+            body = resp.read()
+            return json.loads(body) if body else {}
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
         try:
@@ -118,6 +119,21 @@ def fetch_token(config: dict, kind: str = "registration") -> str:
         return _fetch_via_pat(config, kind)
     else:
         raise ValueError(f"unknown GITHUB_AUTH_METHOD: {method!r} (expected app or token)")
+
+
+def delete_runner(config: dict, name: str) -> bool:
+    """Best-effort deregister the GitHub Actions runner with the given name.
+    Returns True if a runner was found and deleted, False if none matched.
+    Ephemeral runners self-remove after a completed job; this cleans up the
+    stale registration left behind by an interrupted or failed run."""
+    token = fetch_token(config, kind="installation")
+    runners_url = _derive_runners_url(config)
+    listing = _gh_api("GET", runners_url, token)
+    for runner in listing.get("runners", []):
+        if runner.get("name") == name:
+            _gh_api("DELETE", f"{runners_url}/{runner['id']}", token)
+            return True
+    return False
 
 
 if __name__ == "__main__":

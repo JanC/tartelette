@@ -16,6 +16,12 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+# When launched as a script (`python host/runner.py`), sys.path[0] is host/, so
+# the `host` package is not importable. Add the project root so `host.*` resolves
+# in both script and module (`python -m host.runner`, tests) invocations.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 
 def load_env(path: Path) -> dict:
     """Parse a .env file into a dict. Skips blank lines and # comments.
@@ -151,7 +157,10 @@ class LogfmtFormatter(logging.Formatter):
         if run_id:
             parts.append(f"run_id={run_id}")
         parts.append(f"msg={msg}")
-        return " ".join(parts)
+        line = " ".join(parts)
+        if record.exc_info:
+            line += "\n" + self.formatException(record.exc_info)
+        return line
 
 
 def setup_logging(log_file: Path, runner_name: str) -> logging.Logger:
@@ -196,6 +205,39 @@ def _ssh(ip: str, config: Config, command: str, check: bool = True) -> subproces
         capture_output=True,
         check=check,
     )
+
+
+def _ssh_stream(
+    ip: str,
+    config: Config,
+    command: str,
+    log: logging.Logger,
+    run_id: str,
+    runner_name: str,
+) -> None:
+    """Run a guest command over SSH, relaying each output line to the logger so
+    the runner's own status (e.g. 'Listening for Jobs') is visible live.
+    Raises CalledProcessError on non-zero exit."""
+    proc = subprocess.Popen(
+        [
+            "sshpass", "-e", "ssh", "-q",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=5",
+            f"{config.vm_username}@{ip}",
+            command,
+        ],
+        env={**os.environ, "SSHPASS": config.vm_password},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    for line in proc.stdout:
+        line = line.rstrip()
+        if line:
+            log.info(f"[guest] {line}", extra={"run_id": run_id, "runner": runner_name})
+    if proc.wait() != 0:
+        raise subprocess.CalledProcessError(proc.returncode, command)
 
 
 def _wait_for_ip(
@@ -243,7 +285,7 @@ def run_once(
     force_shutdown: threading.Event,
 ) -> None:
     """Execute one complete runner lifecycle: clone → boot → job → teardown."""
-    from host.gh_token import fetch_token
+    from host.gh_token import delete_runner, fetch_token
 
     run_id = uuid.uuid4().hex[:8]
     instance = f"runner_{runner_name}_{run_id}"
@@ -280,7 +322,7 @@ def run_once(
         # Write token to a temp file to avoid exposing it in the process list
         _ssh(ip, config, f"printf '%s' '{token}' > /tmp/.runner_token && chmod 600 /tmp/.runner_token")
         try:
-            _ssh(ip, config, (
+            _ssh_stream(ip, config, (
                 f"./actions-runner/config.sh "
                 f"--url {config.runner_url} "
                 f'--token "$(cat /tmp/.runner_token)" '
@@ -288,21 +330,26 @@ def run_once(
                 f"--name {runner_name} "
                 f"--labels {config.runner_labels} "
                 f"--unattended --replace"
-            ))
+            ), log, run_id, runner_name)
         finally:
             _ssh(ip, config, "rm -f /tmp/.runner_token", check=False)
 
-        log.info("starting runner", extra={"run_id": run_id, "runner": runner_name})
-        _ssh(ip, config, "source ~/.zprofile && ./actions-runner/run.sh")
+        log.info("runner ready, waiting for a job", extra={"run_id": run_id, "runner": runner_name})
+        _ssh_stream(ip, config, "source ~/.zprofile && ./actions-runner/run.sh", log, run_id, runner_name)
         log.info("job complete", extra={"run_id": run_id, "runner": runner_name})
 
     except subprocess.CalledProcessError as e:
+        cmd = e.cmd if isinstance(e.cmd, str) else " ".join(e.cmd)
         stderr = e.stderr.decode(errors="replace").strip() if e.stderr else ""
-        log.error(
-            f"subprocess failed: {' '.join(e.cmd)}" + (f" — {stderr}" if stderr else ""),
-            extra={"run_id": run_id, "runner": runner_name},
-        )
-        raise
+        # run.sh dying because the user asked us to stop is expected, not a failure.
+        if shutdown.is_set():
+            log.info("runner interrupted by shutdown", extra={"run_id": run_id, "runner": runner_name})
+        else:
+            log.error(
+                f"subprocess failed: {cmd}" + (f" — {stderr}" if stderr else ""),
+                extra={"run_id": run_id, "runner": runner_name},
+            )
+            raise
 
     finally:
         if not force_shutdown.is_set():
@@ -310,6 +357,14 @@ def run_once(
             _tart(["stop", instance], config, capture_output=True)
         log.info("deleting VM", extra={"run_id": run_id, "runner": runner_name})
         _tart(["delete", instance], config, capture_output=True)
+        # Ephemeral runners self-remove after a completed job; an interrupted or
+        # failed run leaves a stale registration that blocks the next start with
+        # "A session for this runner already exists". Best-effort cleanup.
+        try:
+            if delete_runner(config.as_gh_token_config(), runner_name):
+                log.info("deregistered runner from GitHub", extra={"run_id": run_id, "runner": runner_name})
+        except Exception as e:
+            log.warning(f"failed to deregister runner: {e!r}", extra={"run_id": run_id, "runner": runner_name})
 
 
 def parse_args(argv: list | None = None) -> argparse.Namespace:
@@ -349,7 +404,11 @@ def run_loop(
             if force_shutdown.is_set():
                 return
             if not shutdown.is_set():
-                log.error("run_once failed, retrying after 5s", extra={"runner": runner_name})
+                log.error(
+                    "run_once failed, retrying after 5s",
+                    exc_info=True,
+                    extra={"runner": runner_name},
+                )
                 shutdown.wait(timeout=5)
     log.info("loop exited", extra={"runner": runner_name})
 
