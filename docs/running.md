@@ -53,6 +53,7 @@ mise run runners:clean
 
 ```sh
 mise run runners:daemon:install 2    # renders plist, loads it (requires sudo)
+mise run runners:daemon:status       # pid, last exit code, log tail
 mise run runners:daemon:uninstall    # stop + remove
 ```
 

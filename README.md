@@ -42,6 +42,7 @@ graceful shutdown, and log format.
 | `mise run runners:drain` | signal loops to stop after current job |
 | `mise run runners:list` | list runners registered on GitHub for this repo/org |
 | `mise run runners:daemon:install [N]` | install a LaunchDaemon that runs `runners:parallel` at boot |
+| `mise run runners:daemon:status` | show daemon state, pid, and recent log |
 | `mise run runners:daemon:uninstall` | stop and remove the LaunchDaemon |
 | `mise run runners:clean [--offline-only]` | deregister orphan runners on GitHub |
 | `mise run vm:clean [-y]` | delete dead job-VM clones from the Tart store |
