@@ -86,10 +86,11 @@ sudo chown root:wheel "$PLIST_DST"
 sudo chmod 644 "$PLIST_DST"
 rm -f "$TMP_PLIST"
 
-# Replace any previous instance, then load.
+# Replace any previous instance, then load. Enable first to clear any disabled
+# state left by runners:daemon:stop, otherwise bootstrap loads it disabled.
 sudo launchctl bootout system "$PLIST_DST" 2>/dev/null || true
-sudo launchctl bootstrap system "$PLIST_DST"
 sudo launchctl enable "system/$LABEL"
+sudo launchctl bootstrap system "$PLIST_DST"
 
 echo "[daemon:install] loaded $LABEL"
 echo "[daemon:install] logs: $ROOT/daemon.log  (per-runner logs under .runners/runner-*/runner.log)"
