@@ -40,7 +40,8 @@ graceful shutdown, and log format.
 | `mise run runners:start` | start a single host loop |
 | `mise run runners:parallel [N]` | run N loops in parallel (default 2) |
 | `mise run runners:drain` | signal loops to stop after current job |
-| `mise run runners:install-daemon [N]` | install a LaunchDaemon that runs `runners:parallel` at boot |
-| `mise run runners:uninstall-daemon` | stop and remove the LaunchDaemon |
+| `mise run runners:list` | list runners registered on GitHub for this repo/org |
+| `mise run runners:daemon:install [N]` | install a LaunchDaemon that runs `runners:parallel` at boot |
+| `mise run runners:daemon:uninstall` | stop and remove the LaunchDaemon |
 | `mise run runners:clean [--offline-only]` | deregister orphan runners on GitHub |
 | `mise run vm:clean [-y]` | delete dead job-VM clones from the Tart store |
