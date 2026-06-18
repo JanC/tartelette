@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#MISE description="Start (or restart) the runners LaunchDaemon"
+# Re-enables and loads the daemon installed by runners:daemon:install. If it is
+# already loaded, restarts it instead. Use after runners:daemon:stop.
+
+set -euo pipefail
+
+LABEL="com.atlas.tart-ci.runners"
+PLIST_DST="/Library/LaunchDaemons/$LABEL.plist"
+
+if [ ! -f "$PLIST_DST" ]; then
+  echo "[daemon:start] not installed ($PLIST_DST absent)" >&2
+  echo "[daemon:start] install with: mise run runners:daemon:install [N]" >&2
+  exit 1
+fi
+
+echo "[daemon:start] enabling + loading $LABEL (sudo required)"
+sudo launchctl enable "system/$LABEL"
+# bootstrap loads it (RunAtLoad starts it); if already loaded, restart instead.
+if sudo launchctl bootstrap system "$PLIST_DST" 2>/dev/null; then
+  echo "[daemon:start] loaded"
+else
+  sudo launchctl kickstart -k "system/$LABEL"
+  echo "[daemon:start] already loaded — restarted"
+fi
+echo "[daemon:start] check with: mise run runners:daemon:status"
