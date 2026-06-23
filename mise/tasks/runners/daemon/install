@@ -39,8 +39,9 @@ MISE_BIN="$(command -v mise || true)"
 [ -x "$MISE_BIN" ] || MISE_BIN="$HOME/.local/bin/mise"
 [ -x "$MISE_BIN" ] || { echo "could not find the mise binary" >&2; exit 1; }
 
-# launchd starts agents with a bare environment; hand it a PATH that covers
-# Homebrew (tart, jq, sshpass) and mise's own shims.
+# launchd starts agents with a bare environment. mise injects project-managed
+# tools for the task; this base PATH also covers Homebrew-only dependencies
+# such as sshpass and the mise binary itself.
 BREW_PREFIX="$(/opt/homebrew/bin/brew --prefix 2>/dev/null || echo /opt/homebrew)"
 AGENT_PATH="$BREW_PREFIX/bin:$BREW_PREFIX/sbin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
