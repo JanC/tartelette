@@ -5,10 +5,10 @@
 
 set -euo pipefail
 
-LABEL="com.atlas.tart-ci.runners"
+LABEL="com.atlas.tartelette.runners"
 SERVICE="gui/$(id -u)/$LABEL"
 PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
-LOG="$HOME/Library/Logs/tart-ci/daemon.log"
+LOG="$HOME/Library/Logs/tartelette/daemon.log"
 
 if [ ! -f "$PLIST_DST" ]; then
   echo "[daemon:status] not installed ($PLIST_DST absent)"

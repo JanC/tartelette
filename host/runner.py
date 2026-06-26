@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tart CI runner — replaces vendor/ekiden/host/launch.sh."""
+"""Tartelette runner — replaces vendor/ekiden/host/launch.sh."""
 from __future__ import annotations
 
 import argparse
@@ -431,7 +431,7 @@ def run_once(
 
 
 def parse_args(argv: list | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Tart CI runner host loop")
+    parser = argparse.ArgumentParser(description="Tartelette runner host loop")
     parser.add_argument(
         "--parallel",
         type=int,

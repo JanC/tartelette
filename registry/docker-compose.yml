@@ -4,7 +4,7 @@
 services:
   registry:
     image: registry:2
-    container_name: tart-ci-registry
+    container_name: tartelette-registry
     restart: unless-stopped
     ports:
       - "5001:5000"

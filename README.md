@@ -1,4 +1,4 @@
-# tart-ci
+# tartelette
 
 Ephemeral macOS GitHub Actions runners on Apple Silicon, inspired by
 [ekiden](https://github.com/mirego/ekiden).
@@ -11,7 +11,7 @@ one job, then is destroyed.
 
 ```sh
 brew install mise hudochenkov/sshpass/sshpass
-git clone <this-repo> && cd tart-ci
+git clone <this-repo> && cd tartelette
 mise trust && mise install
 
 mise run vm:build                     # build the guest image (Xcode 26.3)

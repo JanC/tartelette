@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-LOG="$HOME/Library/Logs/tart-ci/daemon.log"
+LOG="$HOME/Library/Logs/tartelette/daemon.log"
 
 if [ ! -f "$LOG" ]; then
   echo "[daemon:logs] no log at $LOG (daemon not started yet?)" >&2

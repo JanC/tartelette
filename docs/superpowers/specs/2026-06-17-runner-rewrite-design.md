@@ -11,7 +11,7 @@ Replace the ekiden git submodule with an in-tree Python script (`host/runner.py`
 ## Files
 
 ```
-tart-ci/
+tartelette/
   host/
     runner.py          # main script — replaces launch.sh
     gh_token.py        # token module — replaces gh-runner-token.sh

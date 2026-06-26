@@ -61,9 +61,9 @@ mise run runners:daemon:uninstall    # stop + remove
 ```
 
 Installs a per-user LaunchAgent at
-`~/Library/LaunchAgents/com.atlas.tart-ci.runners.plist`, configured for the
+`~/Library/LaunchAgents/com.atlas.tartelette.runners.plist`, configured for the
 repo path and N runners. `KeepAlive` restarts the supervisor if it crashes.
-Output goes to `~/Library/Logs/tart-ci/daemon.log` — on the boot volume, not
+Output goes to `~/Library/Logs/tartelette/daemon.log` — on the boot volume, not
 the repo, because launchd opens that path during spawn setup and cannot open a
 path on an external volume (it fails with `EX_CONFIG` and writes no log).
 
@@ -90,7 +90,7 @@ which makes the agent-only hang confusing. After granting access, restart with
 and the agent loads at login (not at the pre-login boot phase).
 
 ```sh
-launchctl print "gui/$(id -u)/com.atlas.tart-ci.runners"    # check status
+launchctl print "gui/$(id -u)/com.atlas.tartelette.runners"    # check status
 ```
 
 ### Stopping cleanly

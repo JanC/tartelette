@@ -10,7 +10,7 @@ brew install mise hudochenkov/sshpass/sshpass
 `mise install`. Only `sshpass` needs Homebrew (no mise backend).
 
 ```sh
-git clone <this-repo> && cd tart-ci
+git clone <this-repo> && cd tartelette
 mise trust && mise install
 ```
 

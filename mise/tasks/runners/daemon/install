@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-LABEL="com.atlas.tart-ci.runners"
+LABEL="com.atlas.tartelette.runners"
 DOMAIN="gui/$(id -u)"
 SERVICE="$DOMAIN/$LABEL"
 PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
@@ -23,7 +23,7 @@ ROOT="${MISE_PROJECT_ROOT:?run via 'mise run runners:daemon:install'}"
 # Log to the boot volume, not the repo: launchd opens StandardOutPath during
 # spawn setup, and it cannot open a path on an external volume (/Volumes/...) —
 # that fails the whole job with EX_CONFIG (78) and produces no log at all.
-LOG_DIR="$HOME/Library/Logs/tart-ci"
+LOG_DIR="$HOME/Library/Logs/tartelette"
 LOG="$LOG_DIR/daemon.log"
 mkdir -p "$LOG_DIR"
 

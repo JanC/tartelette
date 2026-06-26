@@ -450,7 +450,7 @@ Expected: `ModuleNotFoundError: No module named 'host.runner'`
 `host/runner.py`:
 ```python
 #!/usr/bin/env python3
-"""Tart CI runner — replaces vendor/ekiden/host/launch.sh."""
+"""Tartelette runner — replaces vendor/ekiden/host/launch.sh."""
 from __future__ import annotations
 
 import dataclasses
@@ -1019,7 +1019,7 @@ import argparse
 
 
 def parse_args(argv: list | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Tart CI runner host loop")
+    parser = argparse.ArgumentParser(description="Tartelette runner host loop")
     parser.add_argument(
         "--parallel",
         type=int,

@@ -1,4 +1,4 @@
-# Host-side tooling and task runner for tart-ci.
+# Host-side tooling and task runner for tartelette.
 #
 # Only `sshpass` stays on Homebrew (no mise backend). Everything scriptable
 # runs through `mise run <task>` — tasks live as files under mise/tasks/.
