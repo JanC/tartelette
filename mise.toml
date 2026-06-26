@@ -4,6 +4,7 @@
 # runs through `mise run <task>` — tasks live as files under mise/tasks/.
 
 [tools]
-"aqua:cirruslabs/tart" = "2.32.1"
+"aqua:openai/tart" = "2.32.1"
 packer = "1.15.4"
 jq = "1.8.1"
+python = "3.12"

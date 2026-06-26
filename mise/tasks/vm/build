@@ -4,7 +4,7 @@
 # Runs `packer init` + `packer build` in guest/. Pass --xcode to pin a
 # different Xcode/macOS base, e.g. `mise run vm:build --xcode 26.4`.
 #
-# Requires: packer (via mise [tools]), tart (Homebrew).
+# Requires: packer and tart (via mise [tools]).
 
 set -euo pipefail
 

@@ -1,41 +1,26 @@
 #!/usr/bin/env bash
-#MISE description="Run N ekiden host loops in parallel (default 2)"
+#MISE description="Run N runner host loops in parallel (default 2)"
 #USAGE arg "[n]" help="number of concurrent host loops (default 2; macOS caps macOS VMs at 2)" default="2"
-# Each gets its own workdir with a per-runner .env so RUNNER_NAME stays unique
-# (ekiden reloads .env every iteration via `export $(xargs <.env)` and would
-# otherwise clobber any env-var override from the wrapper).
-#
-# Usage: mise run runners:parallel [N]   (default 2)
-# Workdirs: .runners/runner-1, .runners/runner-2, ... (wiped on start and exit)
-# Logs:     <workdir>/runner.log (ekiden writes this itself; gone on cleanup)
-# Stop:     Ctrl-C, or pkill -f vendor/ekiden/host/launch.sh
-#
-# Each VM consumes VM_RAM + VM_CPU from .env. N times those must fit the host.
 
 set -euo pipefail
-# Job control: each backgrounded subshell becomes its own process group
-# (pgid = pid). This lets us signal the whole tree (launch.sh, tart, sshpass,
-# ssh, sed, ...) with `kill -- -PGID`.
-set -m
 
 N="${usage_n:-2}"
 case "$N" in
   ''|*[!0-9]*) echo "N must be a positive integer (got: $N)" >&2; exit 1 ;;
 esac
 [ "$N" -ge 1 ] || { echo "N must be >= 1" >&2; exit 1; }
-# Apple's Virtualization framework caps macOS guests at 2 concurrent VMs.
-[ "$N" -gt 2 ] && echo "[parallel] warning: macOS allows at most 2 concurrent macOS VMs; VM $((2 + 1))+ will fail to boot" >&2
 
 ROOT="${MISE_PROJECT_ROOT:?run via 'mise run runners:parallel'}"
-LAUNCH="$ROOT/vendor/ekiden/host/launch.sh"
 SRC_ENV="$ROOT/.env"
-RUNNERS_DIR="$ROOT/.runners"
-
 [ -f "$SRC_ENV" ] || { echo "missing $SRC_ENV" >&2; exit 1; }
 
-# Local-only flow (REGISTRY_URL empty): ekiden clones REGISTRY_IMAGE_NAME directly
-# and nothing pulls it, so it must already be in `tart list`. Fail fast with a
-# clear message instead of ekiden's infinite "does not exist" boot loop.
+# Honor TART_HOME from .env so the pre-flight `tart list` reads the same store
+# the image was built into. launchd does not inherit a shell TART_HOME export,
+# so the daemon would otherwise look in the empty default ~/.tart.
+TART_HOME_VAL="$(grep -E '^TART_HOME=' "$SRC_ENV" | head -1 | cut -d= -f2-)"
+[ -n "$TART_HOME_VAL" ] && export TART_HOME="$TART_HOME_VAL"
+
+# Local-only flow: fail fast if the image is not in tart list.
 REGISTRY_URL="$(grep -E '^REGISTRY_URL=' "$SRC_ENV" | head -1 | cut -d= -f2-)"
 IMAGE="$(grep -E '^REGISTRY_IMAGE_NAME=' "$SRC_ENV" | head -1 | cut -d= -f2-)"
 if [ -z "$REGISTRY_URL" ] && ! tart list --format json | jq -e --arg n "$IMAGE" '.[] | select(.Name==$n)' >/dev/null; then
@@ -45,47 +30,4 @@ if [ -z "$REGISTRY_URL" ] && ! tart list --format json | jq -e --arg n "$IMAGE" 
   exit 1
 fi
 
-BASE_NAME="$(grep -E '^RUNNER_NAME=' "$SRC_ENV" | head -1 | cut -d= -f2-)"
-BASE_NAME="${BASE_NAME:-runner}"
-
-# Stale workdirs from a previous run (or crash) are misleading; nuke them.
-rm -rf "$RUNNERS_DIR"
-
-pids=()
-stopped=0
-cleanup() {
-  [ $stopped -eq 1 ] && return
-  stopped=1
-  echo "[parallel] stopping"
-  # Signal each child's whole process group (negative pid = pgid). The
-  # ${pids[@]+...} guard keeps `set -u` happy when no loops were started yet.
-  for pid in ${pids[@]+"${pids[@]}"}; do kill -TERM -- "-$pid" 2>/dev/null || true; done
-  # Give VMs ~5s to be deleted by ekiden's own SIGTERM trap, then force.
-  for _ in 1 2 3 4 5; do
-    sleep 1
-    alive=0
-    for pid in ${pids[@]+"${pids[@]}"}; do kill -0 "$pid" 2>/dev/null && alive=1; done
-    [ $alive -eq 0 ] && break
-  done
-  for pid in ${pids[@]+"${pids[@]}"}; do kill -KILL -- "-$pid" 2>/dev/null || true; done
-  wait 2>/dev/null || true
-  rm -rf "$RUNNERS_DIR"
-  echo "[parallel] cleaned $RUNNERS_DIR"
-}
-trap cleanup INT TERM EXIT
-
-for i in $(seq 1 "$N"); do
-  WORKDIR="$ROOT/.runners/runner-$i"
-  mkdir -p "$WORKDIR"
-  # Per-runner .env: strip RUNNER_NAME from the source, then append a unique one.
-  grep -v '^RUNNER_NAME=' "$SRC_ENV" > "$WORKDIR/.env"
-  echo "RUNNER_NAME=${BASE_NAME}-${i}" >> "$WORKDIR/.env"
-
-  NAME="${BASE_NAME}-${i}"
-  # ekiden writes runner.log inside WORKDIR; we just prefix stdout for the console.
-  (cd "$WORKDIR" && "$LAUNCH" 2>&1 | sed -u "s/^/[$NAME] /") &
-  pids+=($!)
-  echo "[parallel] started $NAME pid=$! (log: $WORKDIR/runner.log)"
-done
-
-wait
+exec python "$ROOT/host/runner.py" --parallel "$N" --env "$SRC_ENV" --log "$ROOT/runner.log"

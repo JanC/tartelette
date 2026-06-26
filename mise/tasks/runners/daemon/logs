@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#MISE description="Tail the runners LaunchAgent log (follow)"
+# Follows the agent's daemon.log (stdout+stderr of runners:parallel under
+# launchd). Shows the last 50 lines first; override by passing tail flags, e.g.
+#   mise run runners:daemon:logs -- -n 200
+
+set -euo pipefail
+
+LOG="$HOME/Library/Logs/tart-ci/daemon.log"
+
+if [ ! -f "$LOG" ]; then
+  echo "[daemon:logs] no log at $LOG (daemon not started yet?)" >&2
+  exit 1
+fi
+
+exec tail -n 50 -f "$LOG" "$@"

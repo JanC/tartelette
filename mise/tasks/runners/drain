@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Signal all runner loops to drain (finish current job then stop)"
+# Creates a sentinel file that each runner checks at the top of its loop.
+# Remove with 'mise run runners:clean' to resume normal operation.
+
+set -euo pipefail
+
+ROOT="${MISE_PROJECT_ROOT:?run via 'mise run runners:drain'}"
+mkdir -p "$ROOT/.runners"
+touch "$ROOT/.runners/drain"
+echo "[drain] sentinel written — runners will stop after current job"
+echo "[drain] remove with: mise run runners:clean"

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Stop the runners LaunchAgent without removing it"
+# Unloads the agent now and marks it disabled so KeepAlive/login won't respawn
+# it. The plist stays installed; resume with runners:daemon:start. SIGTERM from
+# bootout propagates to runners:parallel, which deletes in-flight VMs via its trap.
+
+set -euo pipefail
+
+LABEL="com.atlas.tart-ci.runners"
+SERVICE="gui/$(id -u)/$LABEL"
+PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
+
+if [ ! -f "$PLIST_DST" ]; then
+  echo "[daemon:stop] not installed ($PLIST_DST absent); nothing to do"
+  exit 0
+fi
+
+echo "[daemon:stop] booting out + disabling $LABEL"
+launchctl bootout "$SERVICE" 2>/dev/null || true
+launchctl disable "$SERVICE"
+echo "[daemon:stop] stopped (plist kept; resume with: mise run runners:daemon:start)"

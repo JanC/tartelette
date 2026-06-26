@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+#MISE description="List GitHub Actions runners registered for this repo/org"
+# Read-only: shows every runner GitHub knows about, highlighting those whose
+# name starts with RUNNER_NAME from .env (the ones this host manages).
+#
+# Usage: mise run runners:list
+# Requires: jq, plus either
+#   GITHUB_AUTH_METHOD=token: GITHUB_API_TOKEN
+#   GITHUB_AUTH_METHOD=app:   GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY_PATH
+#                             + GITHUB_OWNER (+ GITHUB_REPO for repo scope)
+
+set -euo pipefail
+
+ROOT="${MISE_PROJECT_ROOT:?run via 'mise run runners:list'}"
+SRC_ENV="$ROOT/.env"
+[ -f "$SRC_ENV" ] || { echo "missing $SRC_ENV" >&2; exit 1; }
+
+set -a; . "$SRC_ENV"; set +a
+
+: "${GITHUB_OWNER:?GITHUB_OWNER unset}"
+
+if [ -n "${GITHUB_REPO:-}" ]; then
+  RUNNERS_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runners"
+  SCOPE="${GITHUB_OWNER}/${GITHUB_REPO}"
+else
+  RUNNERS_URL="https://api.github.com/orgs/${GITHUB_OWNER}/actions/runners"
+  SCOPE="${GITHUB_OWNER}"
+fi
+
+if [ "${GITHUB_AUTH_METHOD:-token}" = "app" ]; then
+  TOKEN=$(python "$ROOT/host/gh_token.py" --kind installation --env "$SRC_ENV")
+else
+  : "${GITHUB_API_TOKEN:?GITHUB_API_TOKEN unset}"
+  TOKEN="$GITHUB_API_TOKEN"
+fi
+
+list_json=$(curl -fsS -H "Authorization: bearer $TOKEN" "$RUNNERS_URL")
+
+total=$(echo "$list_json" | jq '.total_count')
+echo "runners for ${SCOPE}: ${total}"
+
+[ "$total" -eq 0 ] && exit 0
+
+echo "$list_json" | jq -r '
+  ["ID","NAME","OS","STATUS","BUSY","LABELS"],
+  (.runners[] | [
+    (.id|tostring),
+    .name,
+    .os,
+    .status,
+    (if .busy then "busy" else "idle" end),
+    ([.labels[].name] | join(","))
+  ])
+  | @tsv
+' | column -t -s $'\t'

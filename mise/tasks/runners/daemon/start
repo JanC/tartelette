@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#MISE description="Start (or restart) the runners LaunchAgent"
+# Re-enables and loads the agent installed by runners:daemon:install. If it is
+# already loaded, restarts it instead. Use after runners:daemon:stop.
+
+set -euo pipefail
+
+LABEL="com.atlas.tart-ci.runners"
+DOMAIN="gui/$(id -u)"
+SERVICE="$DOMAIN/$LABEL"
+PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
+
+if [ ! -f "$PLIST_DST" ]; then
+  echo "[daemon:start] not installed ($PLIST_DST absent)" >&2
+  echo "[daemon:start] install with: mise run runners:daemon:install [N]" >&2
+  exit 1
+fi
+
+echo "[daemon:start] enabling + loading $LABEL"
+launchctl enable "$SERVICE"
+# bootstrap loads it (RunAtLoad starts it); if already loaded, restart instead.
+if launchctl bootstrap "$DOMAIN" "$PLIST_DST" 2>/dev/null; then
+  echo "[daemon:start] loaded"
+else
+  launchctl kickstart -k "$SERVICE"
+  echo "[daemon:start] already loaded — restarted"
+fi
+echo "[daemon:start] check with: mise run runners:daemon:status"

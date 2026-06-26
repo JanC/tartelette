@@ -5,7 +5,7 @@
 #
 # Usage: mise run runners:clean [--offline-only]
 # Requires: jq, plus either
-#   GITHUB_AUTH_METHOD=token: GITHUB_API_TOKEN + GITHUB_REGISTRATION_ENDPOINT
+#   GITHUB_AUTH_METHOD=token: GITHUB_API_TOKEN
 #   GITHUB_AUTH_METHOD=app:   GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY_PATH
 #                             + GITHUB_OWNER (+ GITHUB_REPO for repo scope)
 
@@ -17,6 +17,9 @@ SRC_ENV="$ROOT/.env"
 
 set -a; . "$SRC_ENV"; set +a
 
+# Remove drain sentinel so runners resume after clean.
+rm -f "$ROOT/.runners/drain"
+
 : "${RUNNER_NAME:?RUNNER_NAME unset (used as the name prefix to match)}"
 
 if [ "${GITHUB_AUTH_METHOD:-token}" = "app" ]; then
@@ -26,14 +29,16 @@ if [ "${GITHUB_AUTH_METHOD:-token}" = "app" ]; then
   else
     RUNNERS_URL="https://api.github.com/orgs/${GITHUB_OWNER}/actions/runners"
   fi
-  TOKEN=$(GH_TOKEN_KIND=installation "$ROOT/vendor/ekiden/host/gh-runner-token.sh")
+  TOKEN=$(python "$ROOT/host/gh_token.py" --kind installation --env "$SRC_ENV")
 else
   : "${GITHUB_API_TOKEN:?GITHUB_API_TOKEN unset}"
-  : "${GITHUB_REGISTRATION_ENDPOINT:?GITHUB_REGISTRATION_ENDPOINT unset}"
-  # https://api.github.com/repos/<owner>/<repo>/actions/runners/registration-token
-  # -> https://api.github.com/repos/<owner>/<repo>/actions/runners
-  RUNNERS_URL="${GITHUB_REGISTRATION_ENDPOINT%/registration-token}"
+  : "${GITHUB_OWNER:?GITHUB_OWNER unset}"
   TOKEN="$GITHUB_API_TOKEN"
+  if [ -n "${GITHUB_REPO:-}" ]; then
+    RUNNERS_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runners"
+  else
+    RUNNERS_URL="https://api.github.com/orgs/${GITHUB_OWNER}/actions/runners"
+  fi
 fi
 
 OFFLINE_ONLY=0

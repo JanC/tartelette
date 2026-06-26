@@ -1,4 +1,0 @@
-[submodule "vendor/ekiden"]
-	path = vendor/ekiden
-	url = https://github.com/JanC/ekiden
-	branch = app-token

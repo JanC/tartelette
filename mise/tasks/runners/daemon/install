@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+#MISE description="Install a per-user LaunchAgent that runs runners:parallel at login"
+#USAGE arg "[n]" help="number of concurrent host loops (default 2; macOS caps macOS VMs at 2)" default="2"
+# Renders a LaunchAgent plist from live values (mise binary, repo root) and loads
+# it into the user's GUI session so the runner loops start at login (enable
+# auto-login) and restart if the supervisor dies.
+#
+# A user LaunchAgent (not a system LaunchDaemon) is required because the host
+# needs an active user session anyway, and a system daemon cannot reach the
+# user's environment or external volumes (e.g. a repo on /Volumes/...).
+#
+# Stop/remove with `mise run runners:daemon:uninstall`.
+
+set -euo pipefail
+
+LABEL="com.atlas.tart-ci.runners"
+DOMAIN="gui/$(id -u)"
+SERVICE="$DOMAIN/$LABEL"
+PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
+LEGACY_DAEMON="/Library/LaunchDaemons/$LABEL.plist"
+
+ROOT="${MISE_PROJECT_ROOT:?run via 'mise run runners:daemon:install'}"
+# Log to the boot volume, not the repo: launchd opens StandardOutPath during
+# spawn setup, and it cannot open a path on an external volume (/Volumes/...) —
+# that fails the whole job with EX_CONFIG (78) and produces no log at all.
+LOG_DIR="$HOME/Library/Logs/tart-ci"
+LOG="$LOG_DIR/daemon.log"
+mkdir -p "$LOG_DIR"
+
+N="${usage_n:-2}"
+case "$N" in
+  ''|*[!0-9]*) echo "N must be a positive integer (got: $N)" >&2; exit 1 ;;
+esac
+[ "$N" -ge 1 ] || { echo "N must be >= 1" >&2; exit 1; }
+
+# Inside a mise task `mise` is a real binary on PATH (not the shell function),
+# but resolve defensively so the plist gets an absolute path launchd can exec.
+MISE_BIN="$(command -v mise || true)"
+[ -x "$MISE_BIN" ] || MISE_BIN="$HOME/.local/bin/mise"
+[ -x "$MISE_BIN" ] || { echo "could not find the mise binary" >&2; exit 1; }
+
+# launchd starts agents with a bare environment. mise injects project-managed
+# tools for the task; this base PATH also covers Homebrew-only dependencies
+# such as sshpass and the mise binary itself.
+BREW_PREFIX="$(/opt/homebrew/bin/brew --prefix 2>/dev/null || echo /opt/homebrew)"
+AGENT_PATH="$BREW_PREFIX/bin:$BREW_PREFIX/sbin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+# Migrate off any previous system LaunchDaemon install so we don't run both.
+if [ -f "$LEGACY_DAEMON" ]; then
+  echo "[daemon:install] removing legacy system LaunchDaemon (sudo required)"
+  sudo launchctl bootout system "$LEGACY_DAEMON" 2>/dev/null || true
+  sudo rm -f "$LEGACY_DAEMON"
+fi
+
+mkdir -p "$HOME/Library/LaunchAgents"
+TMP_PLIST="$(mktemp -t "$LABEL").plist"
+cat > "$TMP_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>$LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>$MISE_BIN</string>
+      <string>--cd</string>
+      <string>$ROOT</string>
+      <string>run</string>
+      <string>runners:parallel</string>
+      <string>$N</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>$HOME</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>$AGENT_PATH</string>
+      <key>HOME</key>
+      <string>$HOME</string>
+      <key>MISE_PROJECT_ROOT</key>
+      <string>$ROOT</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>StandardOutPath</key>
+    <string>$LOG</string>
+    <key>StandardErrorPath</key>
+    <string>$LOG</string>
+  </dict>
+</plist>
+PLIST
+
+cp "$TMP_PLIST" "$PLIST_DST"
+chmod 644 "$PLIST_DST"
+rm -f "$TMP_PLIST"
+echo "[daemon:install] rendered $PLIST_DST for N=$N mise=$MISE_BIN"
+
+# Replace any previous instance, then enable + load. Enable first to clear any
+# disabled state left by runners:daemon:stop.
+launchctl bootout "$SERVICE" 2>/dev/null || true
+launchctl enable "$SERVICE"
+launchctl bootstrap "$DOMAIN" "$PLIST_DST"
+
+echo "[daemon:install] loaded $LABEL"
+echo "[daemon:install] logs: $LOG  (per-runner logs under .runners/runner-*/runner.log)"
+echo "[daemon:install] status: mise run runners:daemon:status"

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+#MISE description="Show status of the runners LaunchAgent"
+# Reports whether the agent installed by runners:daemon:install is present and
+# running (pid, last exit code, configured loop count) and tails its log.
+
+set -euo pipefail
+
+LABEL="com.atlas.tart-ci.runners"
+SERVICE="gui/$(id -u)/$LABEL"
+PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
+LOG="$HOME/Library/Logs/tart-ci/daemon.log"
+
+if [ ! -f "$PLIST_DST" ]; then
+  echo "[daemon:status] not installed ($PLIST_DST absent)"
+  echo "[daemon:status] install with: mise run runners:daemon:install [N]"
+  exit 0
+fi
+
+echo "[daemon:status] plist: $PLIST_DST"
+# Configured concurrency = the integer arg after 'runners:parallel' in the plist.
+N=$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments' "$PLIST_DST" 2>/dev/null \
+  | awk '/runners:parallel/{getline; gsub(/ /,""); print; exit}')
+[ -n "${N:-}" ] && echo "[daemon:status] configured loops (N): $N"
+
+print_out="$(launchctl print "$SERVICE" 2>/dev/null || true)"
+if [ -z "$print_out" ]; then
+  echo "[daemon:status] not loaded in launchd (installed but not bootstrapped)"
+else
+  state=$(echo "$print_out" | awk -F'= ' '/^[[:space:]]*state = /{print $2; exit}')
+  pid=$(echo "$print_out" | awk -F'= ' '/^[[:space:]]*pid = /{print $2; exit}')
+  last=$(echo "$print_out" | awk -F'= ' '/last exit code = /{print $2; exit}')
+  echo "[daemon:status] state: ${state:-unknown}"
+  echo "[daemon:status] pid: ${pid:-none}"
+  echo "[daemon:status] last exit code: ${last:-n/a}"
+fi
+
+if [ -f "$LOG" ]; then
+  echo "[daemon:status] --- tail $LOG ---"
+  tail -n 15 "$LOG"
+else
+  echo "[daemon:status] no log yet at $LOG"
+fi

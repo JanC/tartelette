@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Run the test suite"
+set -euo pipefail
+ROOT="${MISE_PROJECT_ROOT:?run via mise}"
+cd "$ROOT"
+exec python -m pytest tests/ -v "$@"
