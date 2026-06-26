@@ -6,7 +6,7 @@
 once with graphics to watch:
 
 ```sh
-tart run atlas-app-ci-26.3
+tart run ios-app-ci-26.3
 ```
 
 Confirm the image booted cleanly during the Packer build.
@@ -52,7 +52,7 @@ automatically.
 
 ## `packer build`: disk size smaller than current
 
-`disk_size_gb` in `atlas-app.pkr.hcl` is below the base image's actual size.
+`disk_size_gb` in `ios-app.pkr.hcl` is below the base image's actual size.
 Tart can grow disks, not shrink them. Bump `disk_size_gb` to at least the
 current base size.
 
@@ -79,6 +79,6 @@ plain-HTTP registry.
 
 Image wasn't pre-cached. Re-run:
 ```sh
-tart pull --insecure localhost:5001/atlas-app-ci:26.3
+tart pull --insecure localhost:5001/ios-app-ci:26.3
 tart list    # confirm it appears before starting the loop
 ```

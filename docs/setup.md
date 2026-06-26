@@ -53,10 +53,10 @@ GITHUB_REPO=          # leave empty for org-level
 
 ```
 REGISTRY_URL=                          # empty = local-only (single machine)
-REGISTRY_IMAGE_NAME=atlas-app-ci-26.3  # name from `tart list`
+REGISTRY_IMAGE_NAME=ios-app-ci-26.3  # name from `tart list`
 ```
 
-For a registry: `REGISTRY_URL=localhost:5001`, `REGISTRY_IMAGE_NAME=atlas-app-ci:26.3`.
+For a registry: `REGISTRY_URL=localhost:5001`, `REGISTRY_IMAGE_NAME=ios-app-ci:26.3`.
 See [Building → Multi-host](building.md#ship-via-a-registry-multi-host).
 
 ### Runner

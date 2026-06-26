@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="rsync a built guest image to another host or a local path (no registry)"
 #USAGE arg "<dest>" help="ssh host (user@mac-mini) OR a local Tart store path (/Volumes/nvme/tart)"
-#USAGE arg "<vm>" help="VM name from tart list, e.g. atlas-app-ci-26.3"
+#USAGE arg "<vm>" help="VM name from tart list, e.g. ios-app-ci-26.3"
 #USAGE flag "--dest-store <path>" help="remote Tart store root (ssh mode only; default: the remote's ~/.tart)"
 #USAGE flag "-y --yes" help="skip the confirmation prompt"
 # Copies the stopped VM's directory straight into the destination's Tart store.
@@ -15,9 +15,9 @@
 # Dest store (ssh): --dest-store if given, else the *remote's* ~/.tart (NOT the
 #   local path — the remote's home/TART_HOME may differ).
 #
-# Usage: mise run vm:copy user@mac-mini atlas-app-ci-26.3
-#        mise run vm:copy user@mac-mini atlas-app-ci-26.3 --dest-store /Volumes/nvme/tart
-#        mise run vm:copy /Volumes/nvme/tart atlas-app-ci-26.3   # local path / mounted share
+# Usage: mise run vm:copy user@mac-mini ios-app-ci-26.3
+#        mise run vm:copy user@mac-mini ios-app-ci-26.3 --dest-store /Volumes/nvme/tart
+#        mise run vm:copy /Volumes/nvme/tart ios-app-ci-26.3   # local path / mounted share
 #
 # Requires Homebrew rsync (>= 3.1.0) at /opt/homebrew/bin/rsync; macOS openrsync
 # can't write sparse. In ssh mode the remote needs it there too (--rsync-path).

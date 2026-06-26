@@ -398,7 +398,7 @@ def test_config_defaults():
         "RUNNER_URL": "https://github.com/myorg",
         "RUNNER_NAME": "runner",
         "RUNNER_LABELS": "self-hosted,macos",
-        "REGISTRY_IMAGE_NAME": "atlas-app-ci",
+        "REGISTRY_IMAGE_NAME": "ios-app-ci",
         "VM_USERNAME": "admin",
         "VM_PASSWORD": "admin",
     }
@@ -418,7 +418,7 @@ def test_config_missing_required_raises():
             # RUNNER_URL missing
             "RUNNER_NAME": "runner",
             "RUNNER_LABELS": "self-hosted",
-            "REGISTRY_IMAGE_NAME": "atlas-app-ci",
+            "REGISTRY_IMAGE_NAME": "ios-app-ci",
             "VM_USERNAME": "admin",
             "VM_PASSWORD": "admin",
         })
@@ -434,7 +434,7 @@ def test_config_app_auth_missing_key_raises():
             "RUNNER_URL": "https://github.com/myorg",
             "RUNNER_NAME": "runner",
             "RUNNER_LABELS": "self-hosted",
-            "REGISTRY_IMAGE_NAME": "atlas-app-ci",
+            "REGISTRY_IMAGE_NAME": "ios-app-ci",
             "VM_USERNAME": "admin",
             "VM_PASSWORD": "admin",
         })
@@ -1203,7 +1203,7 @@ IMAGE="$(grep -E '^REGISTRY_IMAGE_NAME=' "$SRC_ENV" | head -1 | cut -d= -f2-)"
 if [ -z "$REGISTRY_URL" ] && ! tart list --format json | jq -e --arg n "$IMAGE" '.[] | select(.Name==$n)' >/dev/null; then
   echo "image '$IMAGE' (REGISTRY_IMAGE_NAME in .env) not found in tart list." >&2
   echo "build it with 'mise run vm:build' or fix REGISTRY_IMAGE_NAME. Available:" >&2
-  tart list --format json | jq -r '.[] | select(.Source=="local" and (.Name|startswith("atlas-app-ci"))) | "  "+.Name' >&2
+  tart list --format json | jq -r '.[] | select(.Source=="local" and (.Name|startswith("ios-app-ci"))) | "  "+.Name' >&2
   exit 1
 fi
 
@@ -1235,7 +1235,7 @@ IMAGE="$(grep -E '^REGISTRY_IMAGE_NAME=' "$SRC_ENV" | head -1 | cut -d= -f2-)"
 if [ -z "$REGISTRY_URL" ] && ! tart list --format json | jq -e --arg n "$IMAGE" '.[] | select(.Name==$n)' >/dev/null; then
   echo "image '$IMAGE' (REGISTRY_IMAGE_NAME in .env) not found in tart list." >&2
   echo "build it with 'mise run vm:build' or fix REGISTRY_IMAGE_NAME. Available:" >&2
-  tart list --format json | jq -r '.[] | select(.Source=="local" and (.Name|startswith("atlas-app-ci"))) | "  "+.Name' >&2
+  tart list --format json | jq -r '.[] | select(.Source=="local" and (.Name|startswith("ios-app-ci"))) | "  "+.Name' >&2
   exit 1
 fi
 
@@ -1425,7 +1425,7 @@ RUNNER_NAME=runner
 #   - Set REGISTRY_URL=localhost:5001 (or remote) for OCI registry distribution.
 # REGISTRY_IMAGE_NAME must match a name in `tart list`.
 REGISTRY_URL=
-REGISTRY_IMAGE_NAME=atlas-app-ci-26.3
+REGISTRY_IMAGE_NAME=ios-app-ci-26.3
 
 # SSH credentials baked into the cirruslabs base image.
 VM_USERNAME=admin

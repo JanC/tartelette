@@ -8,7 +8,7 @@ mise run vm:build --xcode 26.4.1    # pin a different version
 ```
 
 Pulls `ghcr.io/cirruslabs/macos-tahoe-xcode:<tag>` (no auth), bakes the CI
-toolchain on top, and leaves a local VM named `atlas-app-ci-<tag>`. The Xcode
+toolchain on top, and leaves a local VM named `ios-app-ci-<tag>`. The Xcode
 version is in the VM name so you can build a new version alongside the old one
 and flip by updating `REGISTRY_IMAGE_NAME`. Verify with `tart list`.
 
@@ -22,11 +22,11 @@ Packer-built VM in the local Tart store — no push, no pull.
 ## Ship to another host without a registry
 
 ```sh
-mise run vm:copy user@mac-mini atlas-app-ci-26.3
+mise run vm:copy user@mac-mini ios-app-ci-26.3
 # custom remote store:
-mise run vm:copy user@mac-mini atlas-app-ci-26.3 --dest-store /Volumes/nvme/tart
+mise run vm:copy user@mac-mini ios-app-ci-26.3 --dest-store /Volumes/nvme/tart
 # local path / mounted share:
-mise run vm:copy /Volumes/nvme/tart atlas-app-ci-26.3
+mise run vm:copy /Volumes/nvme/tart ios-app-ci-26.3
 ```
 
 Uses Homebrew rsync (>= 3.1.0) — `brew install rsync` on the build Mac (and on
@@ -34,7 +34,7 @@ the destination for ssh mode, via `--rsync-path`). SMB mounts land non-sparse;
 use ssh mode for a compact copy.
 
 On the destination: `tart list` should show the VM. Set
-`REGISTRY_IMAGE_NAME=atlas-app-ci-26.3` and `REGISTRY_URL=` in `.env`, then
+`REGISTRY_IMAGE_NAME=ios-app-ci-26.3` and `REGISTRY_URL=` in `.env`, then
 start the loop. Re-run after every rebuild.
 
 ## Ship via a registry (multi-host)
@@ -55,7 +55,7 @@ Port 5001 — macOS AirPlay Receiver squats on :5000.
 ### Push
 
 ```sh
-tart push --insecure atlas-app-ci-26.3 localhost:5001/atlas-app-ci:26.3
+tart push --insecure ios-app-ci-26.3 localhost:5001/ios-app-ci:26.3
 ```
 
 Re-push after every rebuild.
@@ -66,15 +66,15 @@ Re-push after every rebuild.
 `--insecure` (Tart doesn't special-case localhost for HTTPS):
 
 ```sh
-tart pull --insecure localhost:5001/atlas-app-ci:26.3
-tart list    # shows localhost:5001/atlas-app-ci:26.3
+tart pull --insecure localhost:5001/ios-app-ci:26.3
+tart list    # shows localhost:5001/ios-app-ci:26.3
 ```
 
 Then configure `.env`:
 
 ```
 REGISTRY_URL=localhost:5001
-REGISTRY_IMAGE_NAME=atlas-app-ci:26.3
+REGISTRY_IMAGE_NAME=ios-app-ci:26.3
 ```
 
 Re-run the pre-pull after every rebuild + push.

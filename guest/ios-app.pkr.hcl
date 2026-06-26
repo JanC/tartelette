@@ -3,20 +3,20 @@
 // Base = cirruslabs macOS+Xcode image (user/pass admin/admin, Xcode preinstalled).
 // On top we bake the per-job CI setup the iOS repos repeat on every run:
 //   - GitHub Actions runner binary (NOT configured here — ekiden registers it per job, ephemeral)
-//   - Metal toolchain + Xcode first-launch (mirrors atlas-ios ci_scripts/ci_post_clone.sh)
+//   - Metal toolchain + Xcode first-launch (mirrors ios-app ci_scripts/ci_post_clone.sh)
 //   - mise + pinned iOS toolchain (tuist/swiftlint/swiftformat/uv/periphery/firebase-tools/xcbeautify)
-//   - Maestro CLI + Temurin 21 (atlas-ios e2e-nightly)
+//   - Maestro CLI + Temurin 21 (ios-app e2e-nightly)
 // We deliberately do NOT bake a warm SPM/Tuist module cache — external modules
-// come from Tuist Cloud remote cache (see atlas-ios tuist-cache-warm.yml), and a
+// come from Tuist Cloud remote cache (see ios-app tuist-cache-warm.yml), and a
 // baked cache would bloat the snapshot and go stale on every dependency bump.
 //
-// The produced VM is named atlas-app-ci-<xcode_image_tag> (e.g. atlas-app-ci-26.3)
+// The produced VM is named ios-app-ci-<xcode_image_tag> (e.g. ios-app-ci-26.3)
 // so multiple Xcode versions can coexist locally during an upgrade — there are no
 // image tags without a registry, so the version lives in the name. Point ekiden's
 // REGISTRY_IMAGE_NAME at the one you want.
 //
 // Multi-host only: push to the local registry afterwards, e.g.
-//   tart push --insecure atlas-app-ci-26.3 localhost:5001/atlas-app-ci:26.3
+//   tart push --insecure ios-app-ci-26.3 localhost:5001/ios-app-ci:26.3
 
 packer {
   required_plugins {
@@ -33,9 +33,9 @@ variable "xcode_image_tag" {
   description = "Tag of ghcr.io/cirruslabs/macos-tahoe-xcode to base on. Pinned, not 'latest'."
 }
 
-source "tart-cli" "atlas-app" {
+source "tart-cli" "ios-app" {
   vm_base_name = "ghcr.io/cirruslabs/macos-tahoe-xcode:${var.xcode_image_tag}"
-  vm_name      = "atlas-app-ci-${var.xcode_image_tag}"
+  vm_name      = "ios-app-ci-${var.xcode_image_tag}"
   cpu_count    = 4
   memory_gb    = 8
   disk_size_gb = 120
@@ -45,7 +45,7 @@ source "tart-cli" "atlas-app" {
 }
 
 build {
-  sources = ["source.tart-cli.atlas-app"]
+  sources = ["source.tart-cli.ios-app"]
 
   // GitHub Actions runner — download only, no config.sh here.
   provisioner "shell" {
@@ -62,7 +62,7 @@ build {
     ]
   }
 
-  // Metal toolchain + Xcode first-launch. Mirrors atlas-ios ci_scripts/ci_post_clone.sh,
+  // Metal toolchain + Xcode first-launch. Mirrors ios-app ci_scripts/ci_post_clone.sh,
   // which both iOS repos run on every job via the setup-ios-toolchain composite action.
   // Baking it here makes that step a no-op at job time (the download is large and flaky).
   provisioner "shell" {
@@ -82,9 +82,9 @@ build {
     ]
   }
 
-  // mise + the iOS toolchain pinned in atlas-ios/mise.toml. jdx/mise-action runs
+  // mise + the iOS toolchain pinned in ios-app/mise.toml. jdx/mise-action runs
   // `mise install` on every job; pre-populating ~/.local/share/mise makes it a
-  // cache hit. Versions kept in sync with atlas-ios/mise.toml [tools]; both iOS
+  // cache hit. Versions kept in sync with ios-app/mise.toml [tools]; both iOS
   // repos re-pin tuist via their own mise.toml, so a drift just triggers a
   // harmless re-fetch at job time rather than a failure.
   provisioner "shell" {
@@ -109,7 +109,7 @@ build {
     ]
   }
 
-  // E2E (Maestro) dependencies, used by atlas-ios e2e-nightly.yml.
+  // E2E (Maestro) dependencies, used by ios-app e2e-nightly.yml.
   // Temurin 21 (setup-java@v4 java-version 21) + the Maestro CLI into ~/.maestro.
   provisioner "shell" {
     inline = [

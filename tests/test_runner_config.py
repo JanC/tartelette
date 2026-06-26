@@ -58,7 +58,7 @@ def test_config_defaults():
         "RUNNER_URL": "https://github.com/myorg",
         "RUNNER_NAME": "runner",
         "RUNNER_LABELS": "self-hosted,macos",
-        "REGISTRY_IMAGE_NAME": "atlas-app-ci",
+        "REGISTRY_IMAGE_NAME": "ios-app-ci",
         "VM_USERNAME": "admin",
         "VM_PASSWORD": "admin",
     }
@@ -78,7 +78,7 @@ def test_config_missing_required_raises():
             # RUNNER_URL missing
             "RUNNER_NAME": "runner",
             "RUNNER_LABELS": "self-hosted",
-            "REGISTRY_IMAGE_NAME": "atlas-app-ci",
+            "REGISTRY_IMAGE_NAME": "ios-app-ci",
             "VM_USERNAME": "admin",
             "VM_PASSWORD": "admin",
         })
@@ -94,7 +94,7 @@ def test_config_app_auth_missing_key_raises():
             "RUNNER_URL": "https://github.com/myorg",
             "RUNNER_NAME": "runner",
             "RUNNER_LABELS": "self-hosted",
-            "REGISTRY_IMAGE_NAME": "atlas-app-ci",
+            "REGISTRY_IMAGE_NAME": "ios-app-ci",
             "VM_USERNAME": "admin",
             "VM_PASSWORD": "admin",
         })

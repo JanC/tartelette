@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-LABEL="com.atlas.tartelette.runners"
+LABEL="dev.tartelette.runners"
 SERVICE="gui/$(id -u)/$LABEL"
 PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
 

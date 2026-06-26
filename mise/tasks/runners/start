@@ -22,7 +22,7 @@ IMAGE="$(grep -E '^REGISTRY_IMAGE_NAME=' "$SRC_ENV" | head -1 | cut -d= -f2-)"
 if [ -z "$REGISTRY_URL" ] && ! tart list --format json | jq -e --arg n "$IMAGE" '.[] | select(.Name==$n)' >/dev/null; then
   echo "image '$IMAGE' (REGISTRY_IMAGE_NAME in .env) not found in tart list." >&2
   echo "build it with 'mise run vm:build' or fix REGISTRY_IMAGE_NAME. Available:" >&2
-  tart list --format json | jq -r '.[] | select(.Source=="local" and (.Name|startswith("atlas-app-ci"))) | "  "+.Name' >&2
+  tart list --format json | jq -r '.[] | select(.Source=="local" and (.Name|startswith("ios-app-ci"))) | "  "+.Name' >&2
   exit 1
 fi
 
