@@ -40,10 +40,12 @@ MISE_BIN="$(command -v mise || true)"
 [ -x "$MISE_BIN" ] || { echo "could not find the mise binary" >&2; exit 1; }
 
 # launchd starts agents with a bare environment. mise injects project-managed
-# tools for the task; this base PATH also covers Homebrew-only dependencies
-# such as sshpass and the mise binary itself.
+# tools for the task. Include Mise's shims because `tart` is a Mise-managed
+# tool; launchd otherwise starts with no shell activation and cannot find it.
+# This base PATH also covers Homebrew-only dependencies such as sshpass.
 BREW_PREFIX="$(/opt/homebrew/bin/brew --prefix 2>/dev/null || echo /opt/homebrew)"
-AGENT_PATH="$BREW_PREFIX/bin:$BREW_PREFIX/sbin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+MISE_SHIMS_DIR="$HOME/.local/share/mise/shims"
+AGENT_PATH="$MISE_SHIMS_DIR:$BREW_PREFIX/bin:$BREW_PREFIX/sbin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 # Migrate off any previous system LaunchDaemon install so we don't run both.
 if [ -f "$LEGACY_DAEMON" ]; then
