@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="List stable Xcode versions available for vm:build"
+# Lists stable numeric tags from cirruslabs' Tahoe Xcode Tart base image.
+
+set -euo pipefail
+
+image='cirruslabs/macos-tahoe-xcode'
+token="$(curl --fail --silent --show-error \
+  "https://ghcr.io/token?scope=repository:${image}:pull" | jq --exit-status --raw-output '.token')"
+
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer ${token}" \
+  "https://ghcr.io/v2/${image}/tags/list?n=10000" \
+  | jq --raw-output '.tags[] | select(test("^[0-9]+(\\.[0-9]+)*$"))' \
+  | sort --version-sort

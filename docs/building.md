@@ -3,6 +3,7 @@
 ## Build
 
 ```sh
+mise run vm:versions                 # list stable base-image versions
 mise run vm:build                   # Xcode 26.3 (default)
 mise run vm:build --xcode 26.4.1    # pin a different version
 ```
