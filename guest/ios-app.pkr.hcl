@@ -38,7 +38,7 @@ source "tart-cli" "ios-app" {
   vm_name      = "ios-app-ci-${var.xcode_image_tag}"
   cpu_count    = 4
   memory_gb    = 8
-  disk_size_gb = 120
+  disk_size_gb = 160
   ssh_username = "admin"
   ssh_password = "admin"
   ssh_timeout  = "120s"
