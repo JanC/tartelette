@@ -52,7 +52,7 @@ mise run runners:clean
 ## Run at login (LaunchAgent)
 
 ```sh
-mise run runners:daemon:install 2    # renders plist, loads it (no sudo)
+mise run runners:daemon:install      # installs one runner by default (no sudo)
 mise run runners:daemon:status       # pid, last exit code, log tail
 mise run runners:daemon:logs         # follow daemon.log (tail -f)
 mise run runners:daemon:stop         # pause: unload + disable (keeps plist)

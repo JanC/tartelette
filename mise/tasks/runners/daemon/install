@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Install a per-user LaunchAgent that runs runners:parallel at login"
-#USAGE arg "[n]" help="number of concurrent host loops (default 2; macOS caps macOS VMs at 2)" default="2"
+#USAGE arg "[n]" help="number of concurrent host loops (default 1; macOS caps macOS VMs at 2)" default="1"
 # Renders a LaunchAgent plist from live values (mise binary, repo root) and loads
 # it into the user's GUI session so the runner loops start at login (enable
 # auto-login) and restart if the supervisor dies.
@@ -27,7 +27,7 @@ LOG_DIR="$HOME/Library/Logs/tartelette"
 LOG="$LOG_DIR/daemon.log"
 mkdir -p "$LOG_DIR"
 
-N="${usage_n:-2}"
+N="${usage_n:-1}"
 case "$N" in
   ''|*[!0-9]*) echo "N must be a positive integer (got: $N)" >&2; exit 1 ;;
 esac
