@@ -22,6 +22,8 @@ from typing import Optional
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from host.gh_token import GitHubAPIError
+
 
 def load_env(path: Path) -> dict:
     """Parse a .env file into a dict. Skips blank lines and # comments.
@@ -469,6 +471,22 @@ def run_loop(
             return
         try:
             run_once(config, runner_name, log, shutdown, force_shutdown)
+        except GitHubAPIError as e:
+            if force_shutdown.is_set():
+                return
+            if not shutdown.is_set():
+                if 500 <= e.status < 600:
+                    log.warning(
+                        f"GitHub API temporarily unavailable (HTTP {e.status}), retrying after 5s",
+                        extra={"runner": runner_name},
+                    )
+                else:
+                    log.error(
+                        "run_once failed, retrying after 5s",
+                        exc_info=True,
+                        extra={"runner": runner_name},
+                    )
+                shutdown.wait(timeout=5)
         except Exception:
             if force_shutdown.is_set():
                 return

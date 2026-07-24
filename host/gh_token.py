@@ -16,6 +16,14 @@ import urllib.request
 from pathlib import Path
 
 
+class GitHubAPIError(RuntimeError):
+    """A GitHub API response error with its HTTP status preserved."""
+
+    def __init__(self, method: str, url: str, status: int, message: str):
+        self.status = status
+        super().__init__(f"GitHub API {method} {url} -> HTTP {status}: {message}")
+
+
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
@@ -67,7 +75,7 @@ def _gh_api(method: str, url: str, token: str) -> dict:
             msg = json.loads(body).get("message", body)
         except Exception:
             msg = body
-        raise RuntimeError(f"GitHub API {method} {url} -> HTTP {e.code}: {msg}") from e
+        raise GitHubAPIError(method, url, e.code, msg) from e
 
 
 def _fetch_via_app(config: dict, kind: str) -> str:
