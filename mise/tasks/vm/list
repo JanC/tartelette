@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="List VMs in the local Tart store"
+
+set -euo pipefail
+
+exec tart list "$@"

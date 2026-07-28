@@ -36,6 +36,7 @@ graceful shutdown, and log format.
 | Task | Does |
 |------|------|
 | `mise run vm:build [--xcode <tag>]` | build the guest image with Packer |
+| `mise run vm:list` | list VMs in the local Tart store |
 | `mise run vm:versions` | list stable Xcode versions available to build |
 | `mise run vm:copy <dest> <vm>` | rsync a built image to another host or path |
 | `mise run runners:start` | start a single host loop |
