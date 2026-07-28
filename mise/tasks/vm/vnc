@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#MISE description="Open Screen Sharing for a running local Tart VM"
+#USAGE arg "[vm]" help="running VM name (defaults to the only running VM)"
+# Uses VM_USERNAME from .env. Screen Sharing prompts for the VM password.
+
+set -euo pipefail
+
+ROOT="${MISE_PROJECT_ROOT:?run via 'mise run vm:vnc'}"
+[ -f "$ROOT/.env" ] || { echo "missing $ROOT/.env" >&2; exit 1; }
+set -a; . "$ROOT/.env"; set +a
+
+: "${VM_USERNAME:?VM_USERNAME unset}"
+
+VM="${usage_vm:-}"
+if [ -z "$VM" ]; then
+  RUNNING_VMS="$(tart list --format json | jq -r '.[] | select(.Running) | .Name')"
+  RUNNING_COUNT="$(printf '%s\n' "$RUNNING_VMS" | sed '/^$/d' | wc -l | tr -d ' ')"
+  case "$RUNNING_COUNT" in
+    1) VM="$RUNNING_VMS" ;;
+    0) echo "no local Tart VM is running" >&2; exit 1 ;;
+    *) printf 'multiple VMs are running; choose one:\n%s\n' "$RUNNING_VMS" >&2
+       echo "usage: mise run vm:vnc <vm>" >&2; exit 1 ;;
+  esac
+fi
+
+IP="$(tart ip "$VM")"
+echo "opening Screen Sharing for $VM at $IP"
+exec open "vnc://${VM_USERNAME}@${IP}"

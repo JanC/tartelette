@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#MISE description="Open an SSH session to a running local Tart VM"
+#USAGE arg "[vm]" help="running VM name (defaults to the only running VM)"
+# Uses VM_USERNAME and VM_PASSWORD from .env. Requires sshpass.
+
+set -euo pipefail
+
+ROOT="${MISE_PROJECT_ROOT:?run via 'mise run vm:ssh'}"
+[ -f "$ROOT/.env" ] || { echo "missing $ROOT/.env" >&2; exit 1; }
+set -a; . "$ROOT/.env"; set +a
+
+: "${VM_USERNAME:?VM_USERNAME unset}"
+: "${VM_PASSWORD:?VM_PASSWORD unset}"
+
+VM="${usage_vm:-}"
+if [ -z "$VM" ]; then
+  RUNNING_VMS="$(tart list --format json | jq -r '.[] | select(.Running) | .Name')"
+  RUNNING_COUNT="$(printf '%s\n' "$RUNNING_VMS" | sed '/^$/d' | wc -l | tr -d ' ')"
+  case "$RUNNING_COUNT" in
+    1) VM="$RUNNING_VMS" ;;
+    0) echo "no local Tart VM is running" >&2; exit 1 ;;
+    *) printf 'multiple VMs are running; choose one:\n%s\n' "$RUNNING_VMS" >&2
+       echo "usage: mise run vm:ssh <vm>" >&2; exit 1 ;;
+  esac
+fi
+
+IP="$(tart ip "$VM")"
+echo "connecting to $VM at $IP"
+# `sshpass -e` reads this exact exported variable. Set it here rather than
+# relying on the `.env` auto-export so the handoff remains explicit.
+export SSHPASS="$VM_PASSWORD"
+exec sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+  "${VM_USERNAME}@${IP}"

@@ -131,6 +131,25 @@ mise run vm:clean        # lists stopped runner_* clones, confirms, deletes
 mise run vm:clean -y     # skip prompt
 ```
 
+## Accessing a running VM
+
+When exactly one local Tart VM is running, open an SSH or Screen Sharing session:
+
+```sh
+mise run vm:ssh
+mise run vm:vnc
+```
+
+If more than one VM is running, pass its name explicitly:
+
+```sh
+mise run vm:ssh runner_myhost_1234
+mise run vm:vnc runner_myhost_1234
+```
+
+Both tasks read the guest credentials from `.env`; Screen Sharing asks for the
+guest password in the macOS UI.
+
 ## Observability
 
 `runner.log` uses logfmt. Each line has:
