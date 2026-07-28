@@ -38,9 +38,17 @@ SRC="$SRC_STORE/vms/$VM"
 # Use Homebrew rsync (3.x): macOS openrsync lacks --sparse/--info, so the image
 # would land fully expanded. Require >= 3.1.0 (--info=progress2) and fail loudly.
 RSYNC=/opt/homebrew/bin/rsync
-RSYNC_VER="$("$RSYNC" --version 2>/dev/null | sed -n '1s/.*version \([0-9][0-9.]*\).*/\1/p')"
+if [ ! -x "$RSYNC" ]; then
+  echo "Homebrew rsync is required but was not found at $RSYNC." >&2
+  echo "Install it with: brew install rsync" >&2
+  exit 1
+fi
+if ! RSYNC_VER="$("$RSYNC" --version 2>/dev/null | sed -n '1s/.*version \([0-9][0-9.]*\).*/\1/p')"; then
+  echo "Could not run Homebrew rsync at $RSYNC." >&2
+  exit 1
+fi
 if [ -z "$RSYNC_VER" ]; then
-  echo "$RSYNC not found. Install it: brew install rsync" >&2
+  echo "Could not determine the Homebrew rsync version at $RSYNC." >&2
   exit 1
 fi
 if [ "$(printf '%s\n3.1.0\n' "$RSYNC_VER" | sort -V | head -1)" != "3.1.0" ]; then
@@ -60,6 +68,12 @@ case "$DEST" in
   /*|~*|.*) LOCAL=1 ;;
   *)        LOCAL=0 ;;
 esac
+
+if [ "$LOCAL" = 0 ] && ! ssh "$DEST" "test -x '$RSYNC'"; then
+  echo "Homebrew rsync is required on $DEST but was not found at $RSYNC." >&2
+  echo "Install it on the destination with: ssh $DEST 'brew install rsync'" >&2
+  exit 1
+fi
 
 # Human-readable dest for the summary (avoid an ssh round-trip before confirm).
 if [ "$LOCAL" = 1 ]; then
