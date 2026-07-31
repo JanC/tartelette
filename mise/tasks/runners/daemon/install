@@ -39,12 +39,37 @@ MISE_BIN="$(command -v mise || true)"
 [ -x "$MISE_BIN" ] || MISE_BIN="$HOME/.local/bin/mise"
 [ -x "$MISE_BIN" ] || { echo "could not find the mise binary" >&2; exit 1; }
 
-# launchd starts agents with a bare environment. mise injects project-managed
-# tools for the task. Include Mise's shims because `tart` is a Mise-managed
-# tool; launchd otherwise starts with no shell activation and cannot find it.
-# This base PATH also covers Homebrew-only dependencies such as sshpass.
+# Keep the always-on Tart service out of the shared mise tree used by
+# self-hosted GitHub Actions jobs. CI runs `jdx/mise-action` and may install or
+# refresh tools while this daemon is cloning VMs; sharing `~/.local/share/mise`
+# can leave the Tart shim pointing at an installation in flux.
+TARTELETTE_MISE_DATA_DIR="$HOME/.local/share/tartelette/mise"
+TARTELETTE_MISE_CACHE_DIR="$HOME/Library/Caches/tartelette/mise"
+TARTELETTE_MISE_STATE_DIR="$HOME/.local/state/tartelette/mise"
+mkdir -p "$TARTELETTE_MISE_DATA_DIR" "$TARTELETTE_MISE_CACHE_DIR" "$TARTELETTE_MISE_STATE_DIR"
+
+# Provision this project's exact toolset in the service's private mise home
+# before launchd starts the loop. The absolute Homebrew mise binary remains
+# outside that private data directory.
+while IFS= read -r -d '' task_file; do
+  MISE_DATA_DIR="$TARTELETTE_MISE_DATA_DIR" \
+  MISE_CACHE_DIR="$TARTELETTE_MISE_CACHE_DIR" \
+  MISE_STATE_DIR="$TARTELETTE_MISE_STATE_DIR" \
+    "$MISE_BIN" trust "$task_file" >/dev/null
+done < <(find "$ROOT/mise/tasks" -type f -print0)
+MISE_DATA_DIR="$TARTELETTE_MISE_DATA_DIR" \
+MISE_CACHE_DIR="$TARTELETTE_MISE_CACHE_DIR" \
+MISE_STATE_DIR="$TARTELETTE_MISE_STATE_DIR" \
+  "$MISE_BIN" --cd "$ROOT" install
+MISE_DATA_DIR="$TARTELETTE_MISE_DATA_DIR" \
+MISE_CACHE_DIR="$TARTELETTE_MISE_CACHE_DIR" \
+MISE_STATE_DIR="$TARTELETTE_MISE_STATE_DIR" \
+  "$MISE_BIN" --cd "$ROOT" exec -- tart --version >/dev/null
+
+# launchd starts agents with a bare environment. Use the private shims above
+# and retain Homebrew's path for host-only dependencies such as sshpass.
 BREW_PREFIX="$(/opt/homebrew/bin/brew --prefix 2>/dev/null || echo /opt/homebrew)"
-MISE_SHIMS_DIR="$HOME/.local/share/mise/shims"
+MISE_SHIMS_DIR="$TARTELETTE_MISE_DATA_DIR/shims"
 AGENT_PATH="$MISE_SHIMS_DIR:$BREW_PREFIX/bin:$BREW_PREFIX/sbin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 # Migrate off any previous system LaunchDaemon install so we don't run both.
@@ -82,6 +107,12 @@ cat > "$TMP_PLIST" <<PLIST
       <string>$HOME</string>
       <key>MISE_PROJECT_ROOT</key>
       <string>$ROOT</string>
+      <key>MISE_DATA_DIR</key>
+      <string>$TARTELETTE_MISE_DATA_DIR</string>
+      <key>MISE_CACHE_DIR</key>
+      <string>$TARTELETTE_MISE_CACHE_DIR</string>
+      <key>MISE_STATE_DIR</key>
+      <string>$TARTELETTE_MISE_STATE_DIR</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
