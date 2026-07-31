@@ -123,10 +123,11 @@ If you did kill it mid-job, clean up the leftovers with `runners:clean`
 ## Cleaning up orphans
 
 Killing the loop mid-listen leaves runners registered (offline) in GitHub for
-~14 days. Clean them by prefix:
+~14 days. Clean them by the configured name prefix. When `RUNNER_NAME` is
+empty, this is the sanitized name derived from the Mac's Computer Name:
 
 ```sh
-mise run runners:clean                 # all runners matching RUNNER_NAME prefix
+mise run runners:clean                 # all runners matching the configured name prefix
 mise run runners:clean --offline-only  # only offline ones
 ```
 
