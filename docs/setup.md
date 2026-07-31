@@ -63,12 +63,14 @@ See [Building → Multi-host](building.md#ship-via-a-registry-multi-host).
 
 ```
 RUNNER_URL=https://github.com/<org>
-RUNNER_NAME=runner         # base name; runners:parallel appends -1/-2/…
+RUNNER_NAME=               # empty = a sanitized version of this Mac's Computer Name
 RUNNER_LABELS=self-hosted,macos,arm64,tart
 ```
 
-Give each **host** a unique `RUNNER_NAME` (e.g. the hostname) so parallel
-runners across hosts don't collide on GitHub.
+Leave `RUNNER_NAME` empty to use a sanitized version of this Mac's Computer Name
+automatically. For example, `Jan’s MacBook Pro` becomes `jans-macbook-pro-vm`.
+Set a unique name to override it. This avoids parallel runners across hosts colliding
+on GitHub.
 
 ### VM sizing
 

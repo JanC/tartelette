@@ -2,7 +2,7 @@ import sys, os, textwrap
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from pathlib import Path
 import pytest
-from host.runner import load_env, Config, is_drain_set
+from host.runner import default_runner_name, load_env, Config, is_drain_set, sanitize_runner_name
 
 
 def write_env(tmp_path: Path, content: str) -> Path:
@@ -67,6 +67,37 @@ def test_config_defaults():
     assert cfg.vm_cpu == 4
     assert cfg.registry_url == ""
     assert cfg.tart_home is None
+
+
+def test_config_uses_mac_name_when_runner_name_is_empty(monkeypatch):
+    monkeypatch.setattr("host.runner.default_runner_name", lambda: "jans-macbook-pro-vm")
+    env = {
+        "GITHUB_AUTH_METHOD": "token",
+        "GITHUB_API_TOKEN": "tok",
+        "GITHUB_OWNER": "myorg",
+        "RUNNER_URL": "https://github.com/myorg",
+        "RUNNER_NAME": "",
+        "RUNNER_LABELS": "self-hosted,macos",
+        "REGISTRY_IMAGE_NAME": "ios-app-ci",
+        "VM_USERNAME": "admin",
+        "VM_PASSWORD": "admin",
+    }
+
+    assert Config.from_env(env).runner_name == "jans-macbook-pro-vm"
+
+
+def test_sanitize_runner_name():
+    assert sanitize_runner_name("Jan’s MacBook Pro (M4)") == "jans-macbook-pro-m4"
+
+
+def test_default_runner_name_falls_back_to_hostname_when_scutil_fails(monkeypatch):
+    def fail(*args, **kwargs):
+        raise FileNotFoundError
+
+    monkeypatch.setattr("host.runner.subprocess.check_output", fail)
+    monkeypatch.setattr("host.runner.socket.gethostname", lambda: "build-host")
+
+    assert default_runner_name() == "build-host-vm"
 
 
 def test_config_missing_required_raises():

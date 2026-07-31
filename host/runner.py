@@ -8,10 +8,12 @@ import logging
 import os
 import re
 import signal
+import socket
 import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -40,6 +42,25 @@ def load_env(path: Path) -> dict:
             value = value[1:-1]
         env[key] = value
     return env
+
+
+def sanitize_runner_name(name: str) -> str:
+    """Convert a computer name to a lowercase, hyphen-separated runner name."""
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", ascii_name.lower()).strip("-") or "runner"
+
+
+def default_runner_name() -> str:
+    """Return a sanitized macOS Computer Name with a VM suffix."""
+    try:
+        name = subprocess.check_output(
+            ["scutil", "--get", "ComputerName"], text=True
+        ).strip()
+        if name:
+            return f"{sanitize_runner_name(name)}-vm"
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    return f"{sanitize_runner_name(socket.gethostname())}-vm"
 
 
 @dataclasses.dataclass
@@ -97,7 +118,7 @@ class Config:
             github_owner=require("GITHUB_OWNER"),
             github_repo=env.get("GITHUB_REPO", ""),
             runner_url=require("RUNNER_URL"),
-            runner_name=require("RUNNER_NAME"),
+            runner_name=env.get("RUNNER_NAME") or default_runner_name(),
             runner_labels=require("RUNNER_LABELS"),
             registry_url=env.get("REGISTRY_URL", ""),
             registry_image_name=require("REGISTRY_IMAGE_NAME"),
