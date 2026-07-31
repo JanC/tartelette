@@ -72,6 +72,9 @@ automatically. For example, `Jan’s MacBook Pro` becomes `jans-macbook-pro-vm`.
 Set a unique name to override it. This avoids parallel runners across hosts colliding
 on GitHub.
 
+At startup, the runner reads the Xcode version installed in the VM and adds an
+`xcode-<major.minor>` label. For example, Xcode 16.4 adds `xcode-16.4`.
+
 ### VM sizing
 
 ```

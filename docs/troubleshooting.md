@@ -42,7 +42,8 @@ that the App is installed on `GITHUB_OWNER`.
 ## Runner registers but never picks up the job
 
 Label mismatch. The job's `runs-on` labels must all be present in
-`RUNNER_LABELS`. Default: `self-hosted,macos,arm64,tart`.
+`RUNNER_LABELS`. Default: `self-hosted,macos,arm64,tart`; the runner also adds
+an `xcode-<major.minor>` label from the Xcode installed in the VM.
 
 ## Two parallel jobs but only one runs
 

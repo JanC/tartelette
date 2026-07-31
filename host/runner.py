@@ -63,6 +63,23 @@ def default_runner_name() -> str:
     return f"{sanitize_runner_name(socket.gethostname())}-vm"
 
 
+def xcode_version_label(xcodebuild_output: str) -> str:
+    """Return a GitHub runner label for the installed Xcode version."""
+    match = re.search(r"^Xcode\s+(\d+(?:\.\d+)*)\b", xcodebuild_output, re.MULTILINE)
+    if not match:
+        raise ValueError(f"could not determine Xcode version from: {xcodebuild_output!r}")
+    return f"xcode-{match.group(1)}"
+
+
+def with_xcode_version_label(labels: str, xcodebuild_output: str) -> str:
+    """Append the installed Xcode version label unless it is already present."""
+    xcode_label = xcode_version_label(xcodebuild_output)
+    existing_labels = [label.strip() for label in labels.split(",") if label.strip()]
+    if xcode_label not in existing_labels:
+        existing_labels.append(xcode_label)
+    return ",".join(existing_labels)
+
+
 @dataclasses.dataclass
 class Config:
     # Auth
@@ -412,6 +429,8 @@ def run_once(
             return
 
         log.info("configuring runner", extra={"run_id": run_id, "runner": runner_name})
+        xcodebuild_output = _ssh(ip, config, "xcodebuild -version").stdout.decode()
+        runner_labels = with_xcode_version_label(config.runner_labels, xcodebuild_output)
         # Write token to a temp file to avoid exposing it in the process list
         _ssh(ip, config, f"printf '%s' '{token}' > /tmp/.runner_token && chmod 600 /tmp/.runner_token")
         try:
@@ -421,7 +440,7 @@ def run_once(
                 f'--token "$(cat /tmp/.runner_token)" '
                 f"--ephemeral "
                 f"--name {runner_name} "
-                f"--labels {config.runner_labels} "
+                f"--labels {runner_labels} "
                 f"--unattended"
             ), log, run_id, runner_name)
             registered = True

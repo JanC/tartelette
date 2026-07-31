@@ -2,7 +2,15 @@ import sys, os, textwrap
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from pathlib import Path
 import pytest
-from host.runner import default_runner_name, load_env, Config, is_drain_set, sanitize_runner_name
+from host.runner import (
+    Config,
+    default_runner_name,
+    is_drain_set,
+    load_env,
+    sanitize_runner_name,
+    with_xcode_version_label,
+    xcode_version_label,
+)
 
 
 def write_env(tmp_path: Path, content: str) -> Path:
@@ -88,6 +96,28 @@ def test_config_uses_mac_name_when_runner_name_is_empty(monkeypatch):
 
 def test_sanitize_runner_name():
     assert sanitize_runner_name("Jan’s MacBook Pro (M4)") == "jans-macbook-pro-m4"
+
+
+def test_xcode_version_label():
+    assert xcode_version_label("Xcode 16.4\nBuild version 16F6\n") == "xcode-16.4"
+    assert xcode_version_label("Xcode 16.0 beta 2\nBuild version 16A5171c\n") == "xcode-16.0"
+
+
+def test_xcode_version_label_rejects_unexpected_output():
+    with pytest.raises(ValueError, match="could not determine Xcode version"):
+        xcode_version_label("xcodebuild: error: SDK not found\n")
+
+
+def test_with_xcode_version_label_appends_detected_version():
+    assert with_xcode_version_label(
+        "self-hosted,macos,arm64,tart", "Xcode 16.4\nBuild version 16F6\n"
+    ) == "self-hosted,macos,arm64,tart,xcode-16.4"
+
+
+def test_with_xcode_version_label_avoids_duplicate():
+    assert with_xcode_version_label(
+        "self-hosted,xcode-16.4", "Xcode 16.4\nBuild version 16F6\n"
+    ) == "self-hosted,xcode-16.4"
 
 
 def test_default_runner_name_falls_back_to_hostname_when_scutil_fails(monkeypatch):
