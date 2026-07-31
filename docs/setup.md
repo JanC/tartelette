@@ -64,7 +64,7 @@ See [Building → Multi-host](building.md#ship-via-a-registry-multi-host).
 ```
 RUNNER_URL=https://github.com/<org>
 RUNNER_NAME=               # empty = a sanitized version of this Mac's Computer Name
-RUNNER_LABELS=self-hosted,macos,arm64,tart
+RUNNER_LABELS=                          # empty = self-hosted,macos,arm64,tart,xcode-<version>
 ```
 
 Leave `RUNNER_NAME` empty to use a sanitized version of this Mac's Computer Name
@@ -72,8 +72,10 @@ automatically. For example, `Jan’s MacBook Pro` becomes `jans-macbook-pro-vm`.
 Set a unique name to override it. This avoids parallel runners across hosts colliding
 on GitHub.
 
-At startup, the runner reads the Xcode version installed in the VM and adds an
-`xcode-<major.minor>` label. For example, Xcode 16.4 adds `xcode-16.4`.
+Leave `RUNNER_LABELS` empty to register with `self-hosted,macos,arm64,tart`
+plus an `xcode-<major.minor>` label detected in the VM. For example, Xcode 16.4
+adds `xcode-16.4`. Set `RUNNER_LABELS` to register exactly those labels; no
+labels are added or changed.
 
 ### VM sizing
 

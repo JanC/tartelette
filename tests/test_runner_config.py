@@ -7,8 +7,8 @@ from host.runner import (
     default_runner_name,
     is_drain_set,
     load_env,
+    resolved_runner_labels,
     sanitize_runner_name,
-    with_xcode_version_label,
     xcode_version_label,
 )
 
@@ -108,16 +108,31 @@ def test_xcode_version_label_rejects_unexpected_output():
         xcode_version_label("xcodebuild: error: SDK not found\n")
 
 
-def test_with_xcode_version_label_appends_detected_version():
-    assert with_xcode_version_label(
-        "self-hosted,macos,arm64,tart", "Xcode 16.4\nBuild version 16F6\n"
+def test_resolved_runner_labels_uses_defaults_with_detected_xcode_when_empty():
+    assert resolved_runner_labels(
+        "", "Xcode 16.4\nBuild version 16F6\n"
     ) == "self-hosted,macos,arm64,tart,xcode-16.4"
 
 
-def test_with_xcode_version_label_avoids_duplicate():
-    assert with_xcode_version_label(
-        "self-hosted,xcode-16.4", "Xcode 16.4\nBuild version 16F6\n"
-    ) == "self-hosted,xcode-16.4"
+def test_resolved_runner_labels_preserves_configured_labels_exactly():
+    labels = "self-hosted, custom-label ,xcode-16.4"
+    assert resolved_runner_labels(
+        labels, "Xcode 16.5\nBuild version 16F6\n"
+    ) == labels
+
+
+def test_config_allows_empty_runner_labels():
+    env = {
+        "GITHUB_AUTH_METHOD": "token",
+        "GITHUB_API_TOKEN": "tok",
+        "GITHUB_OWNER": "myorg",
+        "RUNNER_URL": "https://github.com/myorg",
+        "REGISTRY_IMAGE_NAME": "ios-app-ci",
+        "VM_USERNAME": "admin",
+        "VM_PASSWORD": "admin",
+    }
+
+    assert Config.from_env(env).runner_labels == ""
 
 
 def test_default_runner_name_falls_back_to_hostname_when_scutil_fails(monkeypatch):

@@ -71,13 +71,14 @@ def xcode_version_label(xcodebuild_output: str) -> str:
     return f"xcode-{match.group(1)}"
 
 
-def with_xcode_version_label(labels: str, xcodebuild_output: str) -> str:
-    """Append the installed Xcode version label unless it is already present."""
-    xcode_label = xcode_version_label(xcodebuild_output)
-    existing_labels = [label.strip() for label in labels.split(",") if label.strip()]
-    if xcode_label not in existing_labels:
-        existing_labels.append(xcode_label)
-    return ",".join(existing_labels)
+DEFAULT_RUNNER_LABELS = "self-hosted,macos,arm64,tart"
+
+
+def resolved_runner_labels(labels: str, xcodebuild_output: str) -> str:
+    """Use default labels with Xcode version only when labels were not configured."""
+    if labels:
+        return labels
+    return f"{DEFAULT_RUNNER_LABELS},{xcode_version_label(xcodebuild_output)}"
 
 
 @dataclasses.dataclass
@@ -136,7 +137,7 @@ class Config:
             github_repo=env.get("GITHUB_REPO", ""),
             runner_url=require("RUNNER_URL"),
             runner_name=env.get("RUNNER_NAME") or default_runner_name(),
-            runner_labels=require("RUNNER_LABELS"),
+            runner_labels=env.get("RUNNER_LABELS", ""),
             registry_url=env.get("REGISTRY_URL", ""),
             registry_image_name=require("REGISTRY_IMAGE_NAME"),
             vm_username=require("VM_USERNAME"),
@@ -430,7 +431,7 @@ def run_once(
 
         log.info("configuring runner", extra={"run_id": run_id, "runner": runner_name})
         xcodebuild_output = _ssh(ip, config, "xcodebuild -version").stdout.decode()
-        runner_labels = with_xcode_version_label(config.runner_labels, xcodebuild_output)
+        runner_labels = resolved_runner_labels(config.runner_labels, xcodebuild_output)
         # Write token to a temp file to avoid exposing it in the process list
         _ssh(ip, config, f"printf '%s' '{token}' > /tmp/.runner_token && chmod 600 /tmp/.runner_token")
         try:
