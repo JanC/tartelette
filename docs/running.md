@@ -9,6 +9,13 @@ mise run runners:start
 Starts one loop: one VM at a time, one job per VM. Logs to `runner.log` and
 stdout in logfmt format.
 
+Before it starts, it checks GitHub for registered runner names. If
+`RUNNER_NAME` is already registered, it selects the first free suffix starting
+at `-2` (for example, `myhost-2`). This lets a second `runners:start` process
+run beside an existing one without replacing or deregistering the first runner.
+If GitHub cannot be queried, startup fails rather than risking a name collision.
+The `-1` suffix stays reserved for `runners:parallel`.
+
 ## Parallel runners
 
 ```sh

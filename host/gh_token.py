@@ -129,6 +129,24 @@ def fetch_token(config: dict, kind: str = "registration") -> str:
         raise ValueError(f"unknown GITHUB_AUTH_METHOD: {method!r} (expected app or token)")
 
 
+def list_runner_names(config: dict) -> set[str]:
+    """Return every registered runner name in the configured GitHub scope."""
+    token = fetch_token(config, kind="installation")
+    runners_url = _derive_runners_url(config)
+    names: set[str] = set()
+    page = 1
+
+    # GitHub returns at most 100 runners per page.  Include every page so a
+    # busy host does not accidentally reuse a name hidden on a later page.
+    while True:
+        listing = _gh_api("GET", f"{runners_url}?per_page=100&page={page}", token)
+        runners = listing.get("runners", [])
+        names.update(runner["name"] for runner in runners if runner.get("name"))
+        if len(runners) < 100:
+            return names
+        page += 1
+
+
 def delete_runner(config: dict, name: str) -> bool:
     """Best-effort deregister the GitHub Actions runner with the given name.
     Returns True if a runner was found and deleted, False if none matched.

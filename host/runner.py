@@ -360,6 +360,7 @@ def run_once(
 
     run_id = uuid.uuid4().hex[:8]
     instance = f"runner_{runner_name}_{run_id}"
+    registered = False
 
     log.info("fetching registration token", extra={"run_id": run_id, "runner": runner_name})
     token = fetch_token(config.as_gh_token_config(), kind="registration")
@@ -400,8 +401,9 @@ def run_once(
                 f"--ephemeral "
                 f"--name {runner_name} "
                 f"--labels {config.runner_labels} "
-                f"--unattended --replace"
+                f"--unattended"
             ), log, run_id, runner_name)
+            registered = True
         finally:
             _ssh(ip, config, "rm -f /tmp/.runner_token", check=False)
 
@@ -431,11 +433,12 @@ def run_once(
         # Ephemeral runners self-remove after a completed job; an interrupted or
         # failed run leaves a stale registration that blocks the next start with
         # "A session for this runner already exists". Best-effort cleanup.
-        try:
-            if delete_runner(config.as_gh_token_config(), runner_name):
-                log.info("deregistered runner from GitHub", extra={"run_id": run_id, "runner": runner_name})
-        except Exception as e:
-            log.warning(f"failed to deregister runner: {e!r}", extra={"run_id": run_id, "runner": runner_name})
+        if registered:
+            try:
+                if delete_runner(config.as_gh_token_config(), runner_name):
+                    log.info("deregistered runner from GitHub", extra={"run_id": run_id, "runner": runner_name})
+            except Exception as e:
+                log.warning(f"failed to deregister runner: {e!r}", extra={"run_id": run_id, "runner": runner_name})
 
 
 def parse_args(argv: list | None = None) -> argparse.Namespace:
@@ -454,6 +457,29 @@ def parse_args(argv: list | None = None) -> argparse.Namespace:
     if args.parallel < 1:
         parser.error(f"--parallel must be >= 1, got {args.parallel}")
     return args
+
+
+def choose_runner_name(base_name: str, existing_names: set[str]) -> str:
+    """Choose a safe name for a standalone runner loop.
+
+    The configured base name remains the first choice for backwards
+    compatibility.  If it is in use, leave ``-1`` for the deterministic
+    ``runners:parallel`` pool and choose the first available ``-2`` suffix.
+    """
+    if base_name not in existing_names:
+        return base_name
+
+    suffix = 2
+    while f"{base_name}-{suffix}" in existing_names:
+        suffix += 1
+    return f"{base_name}-{suffix}"
+
+
+def resolve_standalone_runner_name(config: Config) -> str:
+    """Query GitHub and select a name which is not already registered."""
+    from host.gh_token import list_runner_names
+
+    return choose_runner_name(config.runner_name, list_runner_names(config.as_gh_token_config()))
 
 
 def run_loop(
@@ -533,10 +559,16 @@ def main() -> None:
     # closure race if a signal arrives before the assignment below.
     base_name = config.runner_name
     runner_names = (
-        [base_name]
+        [resolve_standalone_runner_name(config)]
         if args.parallel == 1
         else [f"{base_name}-{i}" for i in range(1, args.parallel + 1)]
     )
+
+    if args.parallel == 1 and runner_names[0] != base_name:
+        log.info(
+            f"runner name {base_name!r} is already registered; using {runner_names[0]!r}",
+            extra={"runner": runner_names[0]},
+        )
 
     def handle_signal(sig, frame):
         now = time.time()

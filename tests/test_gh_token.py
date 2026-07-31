@@ -1,6 +1,7 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from host import gh_token
 from host.gh_token import GitHubAPIError, _b64url, _derive_scope, _derive_runners_url
 
 def test_b64url_no_padding():
@@ -38,3 +39,22 @@ def test_github_api_error_exposes_http_status_for_retry_handling():
 
     assert error.status == 503
     assert str(error) == "GitHub API POST https://api.github.com/example -> HTTP 503: Service Unavailable"
+
+
+def test_list_runner_names_reads_all_pages(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(gh_token, "fetch_token", lambda config, kind: "token")
+
+    def fake_api(method, url, token):
+        calls.append(url)
+        if url.endswith("page=1"):
+            return {"runners": [{"name": f"runner-{i}"} for i in range(100)]}
+        return {"runners": [{"name": "runner-100"}]}
+
+    monkeypatch.setattr(gh_token, "_gh_api", fake_api)
+
+    names = gh_token.list_runner_names({"GITHUB_OWNER": "myorg", "GITHUB_REPO": "myrepo"})
+
+    assert names == {f"runner-{i}" for i in range(101)}
+    assert len(calls) == 2
