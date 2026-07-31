@@ -7,6 +7,7 @@ import dataclasses
 import logging
 import os
 import re
+import select
 import signal
 import socket
 import subprocess
@@ -16,7 +17,7 @@ import time
 import unicodedata
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 # When launched as a script (`python host/runner.py`), sys.path[0] is host/, so
 # the `host` package is not importable. Add the project root so `host.*` resolves
@@ -320,6 +321,9 @@ def _ssh_stream(
     log: logging.Logger,
     run_id: str,
     runner_name: str,
+    shutdown: threading.Event | None = None,
+    force_shutdown: threading.Event | None = None,
+    on_graceful_shutdown: Callable[[], bool] | None = None,
 ) -> None:
     """Run a guest command over SSH, relaying each output line to the logger so
     the runner's own status (e.g. 'Listening for Jobs') is visible live.
@@ -341,8 +345,49 @@ def _ssh_stream(
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        # Keep the live guest runner out of this terminal's foreground process
+        # group.  A single Ctrl-C must be handled by the host loop as a drain
+        # request, not forwarded through ssh to an in-flight Actions job.
+        start_new_session=True,
     )
-    for line in proc.stdout:
+    if force_shutdown is None and shutdown is None:
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                log.info(f"[guest] {line}", extra={"run_id": run_id, "runner": runner_name})
+    graceful_shutdown_checked = False
+    while force_shutdown is not None or shutdown is not None:
+        if force_shutdown is not None and force_shutdown.is_set():
+            # The SSH process has its own session, so Ctrl-C does not reach it.
+            # End it explicitly on the second Ctrl-C, then tear down the VM.
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+            raise subprocess.CalledProcessError(proc.returncode, command)
+
+        if (
+            shutdown is not None
+            and shutdown.is_set()
+            and not graceful_shutdown_checked
+            and on_graceful_shutdown is not None
+        ):
+            graceful_shutdown_checked = True
+            if on_graceful_shutdown():
+                # GitHub accepted deregistration, so this runner was idle and
+                # cannot receive another job. End its SSH session and clean up.
+                proc.terminate()
+                proc.wait()
+                raise subprocess.CalledProcessError(proc.returncode, command)
+
+        readable, _, _ = select.select([proc.stdout], [], [], 0.25)
+        if not readable:
+            continue
+        line = proc.stdout.readline()
+        if not line:
+            break
         line = line.rstrip()
         if line:
             log.info(f"[guest] {line}", extra={"run_id": run_id, "runner": runner_name})
@@ -419,6 +464,9 @@ def run_once(
             env=config.tart_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            # See _ssh_stream: the VM must also survive the host's first
+            # Ctrl-C while its runner finishes the current job.
+            start_new_session=True,
         )
 
         ip = _wait_for_ip(instance, config, log, run_id, shutdown, tart_proc)
@@ -443,13 +491,57 @@ def run_once(
                 f"--name {runner_name} "
                 f"--labels {runner_labels} "
                 f"--unattended"
-            ), log, run_id, runner_name)
+            ), log, run_id, runner_name, force_shutdown=force_shutdown)
             registered = True
         finally:
             _ssh(ip, config, "rm -f /tmp/.runner_token", check=False)
 
         log.info("runner ready, waiting for a job", extra={"run_id": run_id, "runner": runner_name})
-        _ssh_stream(ip, config, "source ~/.zprofile && ./actions-runner/run.sh", log, run_id, runner_name)
+        def deregister_if_idle() -> bool:
+            try:
+                deleted = delete_runner(config.as_gh_token_config(), runner_name)
+            except GitHubAPIError as e:
+                if e.status == 422:
+                    log.info(
+                        "runner has a current job; waiting for it to finish",
+                        extra={"run_id": run_id, "runner": runner_name},
+                    )
+                else:
+                    log.warning(
+                        f"could not check whether runner is idle (HTTP {e.status}); waiting",
+                        extra={"run_id": run_id, "runner": runner_name},
+                    )
+                return False
+            except Exception as e:
+                log.warning(
+                    f"could not check whether runner is idle: {e!r}; waiting",
+                    extra={"run_id": run_id, "runner": runner_name},
+                )
+                return False
+
+            if deleted:
+                log.info(
+                    "idle runner deregistered; stopping",
+                    extra={"run_id": run_id, "runner": runner_name},
+                )
+            else:
+                log.info(
+                    "runner was already deregistered; stopping",
+                    extra={"run_id": run_id, "runner": runner_name},
+                )
+            return True
+
+        _ssh_stream(
+            ip,
+            config,
+            "source ~/.zprofile && ./actions-runner/run.sh",
+            log,
+            run_id,
+            runner_name,
+            shutdown=shutdown,
+            force_shutdown=force_shutdown,
+            on_graceful_shutdown=deregister_if_idle,
+        )
         log.info("job complete", extra={"run_id": run_id, "runner": runner_name})
 
     except subprocess.CalledProcessError as e:
@@ -466,7 +558,10 @@ def run_once(
             raise
 
     finally:
-        if not force_shutdown.is_set():
+        if force_shutdown.is_set():
+            log.warning("force stopping VM", extra={"run_id": run_id, "runner": runner_name})
+            _tart(["stop", instance, "--timeout", "0"], config, capture_output=True)
+        else:
             log.info("stopping VM", extra={"run_id": run_id, "runner": runner_name})
             _tart(["stop", instance], config, capture_output=True)
         log.info("deleting VM", extra={"run_id": run_id, "runner": runner_name})

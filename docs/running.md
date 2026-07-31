@@ -36,10 +36,10 @@ Each VM consumes `VM_RAM` + `VM_CPU` from `.env`. N × those must fit the host.
 
 ## Shutdown
 
-- **Ctrl-C once** (or `launchctl stop`): graceful — waits for the current job,
-  de-registers the runner, deletes the VM, exits.
-- **Ctrl-C twice within 3 s**: force — deletes the VM immediately, skips
-  de-registration.
+- **Ctrl-C once**: gracefully stops one foreground runner. If it is idle, it
+  deregisters and exits immediately. If it has a job, it waits for completion,
+  then deregisters and deletes the VM.
+- **Ctrl-C twice within 3 s**: force-stops the VM immediately.
 
 ## Drain
 

@@ -1,8 +1,119 @@
 import logging
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from host.gh_token import GitHubAPIError
 from host import runner
+
+
+def test_ssh_stream_runs_in_its_own_session(monkeypatch):
+    captured = {}
+
+    class FakeProcess:
+        stdout = []
+
+        def wait(self):
+            return 0
+
+    def fake_popen(args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(runner.subprocess, "Popen", fake_popen)
+
+    runner._ssh_stream(
+        "192.0.2.1",
+        type("Config", (), {"vm_username": "admin", "vm_password": "secret"})(),
+        "./actions-runner/run.sh",
+        logging.getLogger("test-runner"),
+        "run-id",
+        "test-runner",
+    )
+
+    assert captured["kwargs"]["start_new_session"] is True
+
+
+def test_ssh_stream_terminates_on_forced_shutdown(monkeypatch):
+    class FakeStdout:
+        def fileno(self):
+            return 4
+
+    class FakeProcess:
+        stdout = FakeStdout()
+        returncode = -15
+        terminated = False
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    proc = FakeProcess()
+    monkeypatch.setattr(runner.subprocess, "Popen", lambda *args, **kwargs: proc)
+    monkeypatch.setattr(runner.select, "select", lambda *args: ([], [], []))
+    force_shutdown = _Event()
+    force_shutdown.set()
+
+    with pytest.raises(subprocess.CalledProcessError):
+        runner._ssh_stream(
+            "192.0.2.1",
+            type("Config", (), {"vm_username": "admin", "vm_password": "secret"})(),
+            "./actions-runner/run.sh",
+            logging.getLogger("test-runner"),
+            "run-id",
+            "test-runner",
+            force_shutdown=force_shutdown,
+        )
+
+    assert proc.terminated is True
+
+
+def test_ssh_stream_stops_idle_runner_after_graceful_shutdown(monkeypatch):
+    class FakeStdout:
+        def fileno(self):
+            return 4
+
+    class FakeProcess:
+        stdout = FakeStdout()
+        returncode = 0
+        terminated = False
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    proc = FakeProcess()
+    shutdown = _Event()
+    shutdown.set()
+    callback_calls = 0
+
+    def deregister_if_idle():
+        nonlocal callback_calls
+        callback_calls += 1
+        return True
+
+    monkeypatch.setattr(runner.subprocess, "Popen", lambda *args, **kwargs: proc)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        runner._ssh_stream(
+            "192.0.2.1",
+            type("Config", (), {"vm_username": "admin", "vm_password": "secret"})(),
+            "./actions-runner/run.sh",
+            logging.getLogger("test-runner"),
+            "run-id",
+            "test-runner",
+            shutdown=shutdown,
+            on_graceful_shutdown=deregister_if_idle,
+        )
+
+    assert callback_calls == 1
+    assert proc.terminated is True
 
 
 class _Event:
