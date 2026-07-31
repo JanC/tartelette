@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-#MISE description="Deregister GitHub Actions runners by RUNNER_NAME prefix"
-# Matches runners whose name starts with RUNNER_NAME from .env. Useful after
-# killing runners:parallel leaves orphans registered in GitHub.
+#MISE description="Deregister GitHub Actions runners by configured name prefix"
+# Matches runners whose name starts with RUNNER_NAME from .env, or this Mac's
+# derived default name when RUNNER_NAME is empty. Useful after killing
+# runners:parallel leaves orphans registered in GitHub.
 #
 # Usage: mise run runners:clean [--offline-only]
 # Requires: jq, plus either
@@ -20,7 +21,13 @@ set -a; . "$SRC_ENV"; set +a
 # Remove drain sentinel so runners resume after clean.
 rm -f "$ROOT/.runners/drain"
 
-: "${RUNNER_NAME:?RUNNER_NAME unset (used as the name prefix to match)}"
+# Keep this in sync with Config.from_env: an empty (or missing) RUNNER_NAME
+# uses the sanitized macOS Computer Name with a "-vm" suffix.
+RUNNER_NAME="${RUNNER_NAME:-}"
+if [ -z "$RUNNER_NAME" ]; then
+  RUNNER_NAME="$(PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" python -c \
+    'from host.runner import default_runner_name; print(default_runner_name())')"
+fi
 
 if [ "${GITHUB_AUTH_METHOD:-token}" = "app" ]; then
   : "${GITHUB_OWNER:?GITHUB_OWNER unset}"
