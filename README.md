@@ -59,6 +59,20 @@ flowchart LR
     Runner -->|registers| GitHub
     GitHub -->|assigns one matching job| Job
     Job -->|runner exits after completion| Remove
+
+    classDef image fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:2px
+    classDef host fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px
+    classDef guest fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:2px
+    classDef github fill:#ede9fe,stroke:#7c3aed,color:#4c1d95,stroke-width:2px
+    classDef cleanup fill:#fee2e2,stroke:#dc2626,color:#7f1d1d,stroke-width:2px
+
+    class Image image
+    class Loop,Clone,Connect host
+    class Runner,Job guest
+    class GitHub github
+    class Remove cleanup
+    style Host fill:#eff6ff,stroke:#93c5fd,color:#1e3a8a
+    style JobVM fill:#f0fdf4,stroke:#86efac,color:#14532d
 ```
 
 The guest image is reused; each running VM is not. A completed job consumes
