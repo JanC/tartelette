@@ -34,29 +34,15 @@ graceful shutdown, and log format.
 ```mermaid
 flowchart LR
     Image[(Tart guest image<br/>macOS, Xcode, CI tools)]
-
-    subgraph Host[Runner host]
-        direction LR
-        Clone[Clone and boot<br/>a job VM]
-
-        subgraph JobVM[Fresh macOS job VM]
-            direction TB
-            Runner[Ephemeral GitHub<br/>Actions runner]
-            Wait[Wait for a<br/>matching job]
-            Job[One CI job]
-            Runner --> Wait --> Job
-        end
-
-        Remove[Stop and delete the VM<br/>then repeat for the next job]
-
-        Clone --> Runner
-        Job --> Remove
-    end
-
+    Clone[Runner host<br/>clone and boot a job VM]
+    Runner[Fresh macOS job VM<br/>ephemeral GitHub Actions runner]
+    Wait[Fresh macOS job VM<br/>wait for a matching job]
+    Job[Fresh macOS job VM<br/>run one CI job]
+    Remove[Runner host<br/>stop and delete the VM, then repeat]
     Registration[GitHub Actions<br/>register runner]
     Assignment[GitHub Actions<br/>assign matching job]
 
-    Image --> Host
+    Image --> Clone --> Runner --> Wait --> Job --> Remove
     Runner --> Registration
     Assignment --> Wait
 
@@ -71,8 +57,6 @@ flowchart LR
     class Runner,Wait,Job guest
     class Registration,Assignment github
     class Remove cleanup
-    style Host fill:#eff6ff,stroke:#93c5fd,color:#1e3a8a
-    style JobVM fill:#f0fdf4,stroke:#86efac,color:#14532d
 ```
 
 The guest image is reused; each running VM is not. A completed job consumes
