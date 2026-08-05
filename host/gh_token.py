@@ -162,6 +162,34 @@ def delete_runner(config: dict, name: str) -> bool:
     return False
 
 
+def find_workflow_run_for_runner(config: dict, runner_name: str) -> dict | None:
+    """Return the active workflow run assigned to a repo-level runner.
+
+    GitHub's runner protocol only prints a job display name.  The Actions API
+    exposes the runner name on each job, which lets the host resolve that job
+    back to its workflow-run URL.  Organization-level runners are deliberately
+    skipped because the REST API has no equivalent organization-wide job list.
+    """
+    repo = config.get("GITHUB_REPO", "")
+    if not repo:
+        return None
+
+    owner = config["GITHUB_OWNER"]
+    token = fetch_token(config, kind="installation")
+    base_url = f"https://api.github.com/repos/{owner}/{repo}/actions/runs"
+    runs = _gh_api("GET", f"{base_url}?status=in_progress&per_page=100", token)
+    for run in runs.get("workflow_runs", []):
+        run_id = run.get("id")
+        if not run_id:
+            continue
+        jobs = _gh_api(
+            "GET", f"{base_url}/{run_id}/jobs?filter=latest&per_page=100", token
+        )
+        if any(job.get("runner_name") == runner_name for job in jobs.get("jobs", [])):
+            return run
+    return None
+
+
 if __name__ == "__main__":
     import argparse
     from pathlib import Path
