@@ -36,13 +36,11 @@ flowchart LR
     Image[(Tart guest image<br/>macOS, Xcode, CI tools)]
 
     subgraph Host[Runner host]
-        direction TB
+        direction LR
         Loop[Host loop]
         Clone[Clone and boot<br/>a job VM]
         Connect[Wait for SSH and<br/>configure the runner]
         Remove[Stop and delete<br/>the job VM]
-        Loop --> Clone --> Connect
-        Remove --> Loop
 
         subgraph JobVM[Fresh macOS job VM]
             direction TB
@@ -50,15 +48,16 @@ flowchart LR
             Job[One CI job]
             Runner --> Job
         end
+
+        Loop --> Clone --> Connect --> Runner
+        Job --> Remove --> Loop
     end
 
     GitHub[GitHub Actions]
 
-    Image --> Clone
-    Connect --> Runner
-    Runner -->|registers| GitHub
-    GitHub -->|assigns one matching job| Job
-    Job -->|runner exits after completion| Remove
+    Image --> Host
+    Host -->|registers an ephemeral runner| GitHub
+    GitHub -->|assigns one matching job| Host
 
     classDef image fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:2px
     classDef host fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px
