@@ -43,13 +43,13 @@ flowchart LR
         Remove[Stop and delete<br/>the job VM]
         Loop --> Clone --> Connect
         Remove --> Loop
-    end
 
-    subgraph JobVM[Fresh macOS job VM]
-        direction TB
-        Runner[Ephemeral GitHub<br/>Actions runner]
-        Job[One CI job]
-        Runner --> Job
+        subgraph JobVM[Fresh macOS job VM]
+            direction TB
+            Runner[Ephemeral GitHub<br/>Actions runner]
+            Job[One CI job]
+            Runner --> Job
+        end
     end
 
     GitHub[GitHub Actions]
