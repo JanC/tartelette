@@ -29,8 +29,9 @@ Pick one method:
 
 Create a GitHub App with:
 - Org-level runner: *Organization permissions → Self-hosted runners: Read & write*
-- Repo-level runner: *Repository permissions → Administration: Read & write*,
-  then set `GITHUB_REPO=<repo>`
+- Repo-level runner: *Repository permissions → Administration: Read & write*
+  and *Actions: Read*, then set `GITHUB_REPO=<repo>`. The Actions permission
+  lets the host log a direct link when the runner accepts a job.
 
 ```
 GITHUB_AUTH_METHOD=app
@@ -39,6 +40,10 @@ GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/app-private-key.pem
 GITHUB_OWNER=<org>
 GITHUB_REPO=          # leave empty for org-level
 ```
+
+With a repo-level runner, the configured PAT also needs permission to read
+Actions data if you want job URLs in the host log. GitHub does not expose an
+organization-wide job listing, so an org-level runner only logs the job name.
 
 **PAT fallback**
 

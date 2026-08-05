@@ -31,6 +31,39 @@ as an ephemeral runner, waits for a job to run, then destroys the VM — one VM
 per job, every time. See [Running](docs/running.md) for parallel runners,
 graceful shutdown, and log format.
 
+```mermaid
+flowchart LR
+    Image[(Tart guest image<br/>macOS, Xcode, CI tools)]
+
+    subgraph Host[Runner host]
+        direction TB
+        Loop[Host loop]
+        Clone[Clone and boot<br/>a job VM]
+        Connect[Wait for SSH and<br/>configure the runner]
+        Remove[Stop and delete<br/>the job VM]
+        Loop --> Clone --> Connect
+        Remove --> Loop
+    end
+
+    subgraph JobVM[Fresh macOS job VM]
+        direction TB
+        Runner[Ephemeral GitHub<br/>Actions runner]
+        Job[One CI job]
+        Runner --> Job
+    end
+
+    GitHub[GitHub Actions]
+
+    Image --> Clone
+    Connect --> Runner
+    Runner -->|registers| GitHub
+    GitHub -->|assigns one matching job| Job
+    Job -->|runner exits after completion| Remove
+```
+
+The guest image is reused; each running VM is not. A completed job consumes
+its runner and its clone, so the next job starts from the known image again.
+
 ## Tasks
 
 | Task | Does |

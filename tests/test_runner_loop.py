@@ -8,6 +8,30 @@ from host.gh_token import GitHubAPIError
 from host import runner
 
 
+def test_report_workflow_run_logs_url(monkeypatch, caplog):
+    import host.gh_token
+
+    config = type(
+        "Config",
+        (),
+        {
+            "github_repo": "myrepo",
+            "as_gh_token_config": lambda self: {"GITHUB_REPO": "myrepo"},
+        },
+    )()
+    monkeypatch.setattr(
+        host.gh_token,
+        "find_workflow_run_for_runner",
+        lambda config, runner_name: {"html_url": "https://github.com/myorg/myrepo/actions/runs/42"},
+    )
+    log = logging.getLogger("test-runner")
+
+    with caplog.at_level(logging.INFO, logger=log.name):
+        runner._report_workflow_run(config, "my-runner", log, "run-id")
+
+    assert "workflow run: https://github.com/myorg/myrepo/actions/runs/42" in caplog.text
+
+
 def test_ssh_stream_runs_in_its_own_session(monkeypatch):
     captured = {}
 

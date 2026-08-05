@@ -1,4 +1,5 @@
 import sys, os
+import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from host import gh_token
@@ -58,3 +59,37 @@ def test_list_runner_names_reads_all_pages(monkeypatch):
 
     assert names == {f"runner-{i}" for i in range(101)}
     assert len(calls) == 2
+
+
+def test_find_workflow_run_for_runner_returns_matching_run(monkeypatch):
+    monkeypatch.setattr(gh_token, "fetch_token", lambda config, kind: "token")
+
+    def fake_api(method, url, token):
+        if url.endswith("/actions/runs?status=in_progress&per_page=100"):
+            return {
+                "workflow_runs": [
+                    {"id": 101, "html_url": "https://github.com/myorg/myrepo/actions/runs/101"},
+                    {"id": 102, "html_url": "https://github.com/myorg/myrepo/actions/runs/102"},
+                ]
+            }
+        if url.endswith("/actions/runs/101/jobs?filter=latest&per_page=100"):
+            return {"jobs": [{"runner_name": "other-runner"}]}
+        if url.endswith("/actions/runs/102/jobs?filter=latest&per_page=100"):
+            return {"jobs": [{"runner_name": "target-runner"}]}
+        raise AssertionError(url)
+
+    monkeypatch.setattr(gh_token, "_gh_api", fake_api)
+
+    run = gh_token.find_workflow_run_for_runner(
+        {"GITHUB_OWNER": "myorg", "GITHUB_REPO": "myrepo"}, "target-runner"
+    )
+
+    assert run == {"id": 102, "html_url": "https://github.com/myorg/myrepo/actions/runs/102"}
+
+
+def test_find_workflow_run_for_runner_skips_org_scope(monkeypatch):
+    monkeypatch.setattr(gh_token, "fetch_token", lambda *args: pytest.fail("unexpected token fetch"))
+
+    assert gh_token.find_workflow_run_for_runner(
+        {"GITHUB_OWNER": "myorg", "GITHUB_REPO": ""}, "target-runner"
+    ) is None

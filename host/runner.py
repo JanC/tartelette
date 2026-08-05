@@ -328,6 +328,15 @@ def _ssh_stream(
     """Run a guest command over SSH, relaying each output line to the logger so
     the runner's own status (e.g. 'Listening for Jobs') is visible live.
     Raises CalledProcessError on non-zero exit."""
+    def relay_line(line: str) -> None:
+        log.info(f"[guest] {line}", extra={"run_id": run_id, "runner": runner_name})
+        if "Running job:" in line:
+            threading.Thread(
+                target=_report_workflow_run,
+                args=(config, runner_name, log, run_id),
+                daemon=True,
+            ).start()
+
     proc = subprocess.Popen(
         [
             "sshpass", "-e", "ssh",
@@ -354,7 +363,7 @@ def _ssh_stream(
         for line in proc.stdout:
             line = line.rstrip()
             if line:
-                log.info(f"[guest] {line}", extra={"run_id": run_id, "runner": runner_name})
+                relay_line(line)
     graceful_shutdown_checked = False
     while force_shutdown is not None or shutdown is not None:
         if force_shutdown is not None and force_shutdown.is_set():
@@ -390,9 +399,53 @@ def _ssh_stream(
             break
         line = line.rstrip()
         if line:
-            log.info(f"[guest] {line}", extra={"run_id": run_id, "runner": runner_name})
+            relay_line(line)
     if proc.wait() != 0:
         raise subprocess.CalledProcessError(proc.returncode, command)
+
+
+def _report_workflow_run(
+    config: Config, runner_name: str, log: logging.Logger, run_id: str
+) -> None:
+    """Log the GitHub Actions run URL after a runner accepts a repo job."""
+    if not config.github_repo:
+        log.info(
+            "workflow run URL unavailable for organization-scoped runner",
+            extra={"run_id": run_id, "runner": runner_name},
+        )
+        return
+
+    from host.gh_token import find_workflow_run_for_runner
+
+    for attempt in range(5):
+        try:
+            workflow_run = find_workflow_run_for_runner(
+                config.as_gh_token_config(), runner_name
+            )
+        except Exception as e:
+            if attempt == 4:
+                log.warning(
+                    f"could not resolve workflow run URL: {e!r}",
+                    extra={"run_id": run_id, "runner": runner_name},
+                )
+                return
+            else:
+                time.sleep(2)
+            continue
+
+        if workflow_run and workflow_run.get("html_url"):
+            log.info(
+                f"workflow run: {workflow_run['html_url']}",
+                extra={"run_id": run_id, "runner": runner_name},
+            )
+            return
+        if attempt < 4:
+            time.sleep(2)
+
+    log.warning(
+        "could not resolve workflow run URL after job started",
+        extra={"run_id": run_id, "runner": runner_name},
+    )
 
 
 def _wait_for_ip(
