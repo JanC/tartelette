@@ -37,27 +37,28 @@ flowchart LR
 
     subgraph Host[Runner host]
         direction LR
-        Loop[Host loop]
         Clone[Clone and boot<br/>a job VM]
-        Connect[Wait for SSH and<br/>configure the runner]
-        Remove[Stop and delete<br/>the job VM]
 
         subgraph JobVM[Fresh macOS job VM]
             direction TB
             Runner[Ephemeral GitHub<br/>Actions runner]
+            Wait[Wait for a<br/>matching job]
             Job[One CI job]
-            Runner --> Job
+            Runner --> Wait --> Job
         end
 
-        Loop --> Clone --> Connect --> Runner
-        Job --> Remove --> Loop
+        Remove[Stop and delete the VM<br/>then repeat for the next job]
+
+        Clone --> Runner
+        Job --> Remove
     end
 
-    GitHub[GitHub Actions]
+    Registration[GitHub Actions<br/>register runner]
+    Assignment[GitHub Actions<br/>assign matching job]
 
     Image --> Host
-    Host -->|registers an ephemeral runner| GitHub
-    GitHub -->|assigns one matching job| Host
+    Runner --> Registration
+    Assignment --> Wait
 
     classDef image fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:2px
     classDef host fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px
@@ -66,9 +67,9 @@ flowchart LR
     classDef cleanup fill:#fee2e2,stroke:#dc2626,color:#7f1d1d,stroke-width:2px
 
     class Image image
-    class Loop,Clone,Connect host
-    class Runner,Job guest
-    class GitHub github
+    class Clone host
+    class Runner,Wait,Job guest
+    class Registration,Assignment github
     class Remove cleanup
     style Host fill:#eff6ff,stroke:#93c5fd,color:#1e3a8a
     style JobVM fill:#f0fdf4,stroke:#86efac,color:#14532d
