@@ -4,7 +4,10 @@
 # derived default name when RUNNER_NAME is empty. Useful after killing
 # runners:parallel leaves orphans registered in GitHub.
 #
-# Usage: mise run runners:clean [--offline-only]
+# Usage: mise run runners:clean [-y|--yes] [--offline-only]
+#   -y/--yes skips the confirmation prompt, for unattended use (launchd, cron).
+#   Without it and without a TTY to prompt on, this exits non-zero rather than
+#   deleting anything.
 # Requires: jq, plus either
 #   GITHUB_AUTH_METHOD=token: GITHUB_API_TOKEN
 #   GITHUB_AUTH_METHOD=app:   GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY_PATH
@@ -48,8 +51,16 @@ else
   fi
 fi
 
+ASSUME_YES=0
 OFFLINE_ONLY=0
-[ "${1:-}" = "--offline-only" ] && OFFLINE_ONLY=1
+for arg in "$@"; do
+  case "$arg" in
+    -y|--yes) ASSUME_YES=1 ;;
+    --offline-only) OFFLINE_ONLY=1 ;;
+    -*) echo "unknown flag: $arg" >&2; exit 1 ;;
+    *) echo "unexpected argument: $arg" >&2; exit 1 ;;
+  esac
+done
 
 list_json=$(curl -fsS -H "Authorization: bearer $TOKEN" "$RUNNERS_URL")
 
@@ -67,8 +78,17 @@ if [ ${#targets[@]} -eq 0 ]; then
 fi
 
 printf '%s\n' "${targets[@]}"
-read -r -p "delete the above ${#targets[@]} runner(s)? [y/N] " ans
-[ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "aborted"; exit 0; }
+if [ "$ASSUME_YES" -ne 1 ]; then
+  # Under launchd/cron there is no stdin to prompt on: `read` hits EOF, returns
+  # non-zero, and `set -e` aborts the task before the delete loop -- so an
+  # unattended sweep silently never clears a stale registration. Say so.
+  if [ ! -t 0 ]; then
+    echo "no TTY to confirm on; re-run with -y to delete unattended" >&2
+    exit 1
+  fi
+  read -r -p "delete the above ${#targets[@]} runner(s)? [y/N] " ans
+  [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "aborted"; exit 0; }
+fi
 
 for line in "${targets[@]}"; do
   id="${line%% *}"
