@@ -543,7 +543,7 @@ def run_once(
                 f"--ephemeral "
                 f"--name {runner_name} "
                 f"--labels {runner_labels} "
-                f"--unattended"
+                f"--unattended --replace"
             ), log, run_id, runner_name, force_shutdown=force_shutdown)
             registered = True
         finally:
