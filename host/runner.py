@@ -521,7 +521,7 @@ def run_once(
             # One directory per slot: parallel jobs never share a cache.
             cache_dir = Path(config.vm_cache_dir).expanduser() / runner_name
             cache_dir.mkdir(parents=True, exist_ok=True)
-            run_args.append(f"--dir={GUEST_CACHE_TAG}:{cache_dir}:tag={GUEST_CACHE_TAG}")
+            run_args.append(f"--dir={cache_dir}:tag={GUEST_CACHE_TAG}")
 
         log.info("booting VM", extra={"run_id": run_id, "runner": runner_name})
         tart_proc = subprocess.Popen(
