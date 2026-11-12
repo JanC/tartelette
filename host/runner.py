@@ -27,6 +27,9 @@ if __package__ in (None, ""):
 
 from host.gh_token import GitHubAPIError
 
+# A custom tag skips the "/Volumes/My Shared Files" automount, whose spaces break build scripts.
+GUEST_CACHE_TAG = "ci-cache"
+
 
 def load_env(path: Path) -> dict:
     """Parse a .env file into a dict. Skips blank lines and # comments.
@@ -107,6 +110,7 @@ class Config:
     vm_ram: int
     vm_cpu: int
     tart_home: Optional[str]
+    vm_cache_dir: Optional[str]
 
     @classmethod
     def from_env(cls, env: dict) -> "Config":
@@ -146,6 +150,7 @@ class Config:
             vm_ram=int(env.get("VM_RAM", "8192")),
             vm_cpu=int(env.get("VM_CPU", "4")),
             tart_home=env.get("TART_HOME") or None,
+            vm_cache_dir=env.get("VM_CACHE_DIR") or None,
         )
 
     def as_gh_token_config(self) -> dict:
@@ -511,9 +516,16 @@ def run_once(
             config, check=True,
         )
 
+        run_args = ["tart", "run", "--no-graphics"]
+        if config.vm_cache_dir:
+            # One directory per slot: parallel jobs never share a cache.
+            cache_dir = Path(config.vm_cache_dir).expanduser() / runner_name
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            run_args.append(f"--dir={cache_dir}:tag={GUEST_CACHE_TAG}")
+
         log.info("booting VM", extra={"run_id": run_id, "runner": runner_name})
         tart_proc = subprocess.Popen(
-            ["tart", "run", "--no-graphics", instance],
+            [*run_args, instance],
             env=config.tart_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -548,6 +560,11 @@ def run_once(
             registered = True
         finally:
             _ssh(ip, config, "rm -f /tmp/.runner_token", check=False)
+        if config.vm_cache_dir:
+            _ssh(ip, config, (
+                f"mkdir -p ~/{GUEST_CACHE_TAG} && mount_virtiofs {GUEST_CACHE_TAG} ~/{GUEST_CACHE_TAG} && "
+                f'echo "TARTELETTE_CACHE_DIR=$HOME/{GUEST_CACHE_TAG}" >> ./actions-runner/.env'
+            ))
 
         log.info("runner ready, waiting for a job", extra={"run_id": run_id, "runner": runner_name})
         def deregister_if_idle() -> bool:

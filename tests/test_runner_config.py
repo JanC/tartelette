@@ -75,6 +75,7 @@ def test_config_defaults():
     assert cfg.vm_cpu == 4
     assert cfg.registry_url == ""
     assert cfg.tart_home is None
+    assert cfg.vm_cache_dir is None
 
 
 def test_config_uses_mac_name_when_runner_name_is_empty(monkeypatch):
